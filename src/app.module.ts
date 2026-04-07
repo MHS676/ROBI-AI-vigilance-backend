@@ -10,6 +10,7 @@ import { CamerasModule } from './cameras/cameras.module'
 import { EspNodesModule } from './esp-nodes/esp-nodes.module'
 import { MicrophonesModule } from './microphones/microphones.module'
 import { TablesModule } from './tables/tables.module'
+import { MappingModule } from './mapping/mapping.module'
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TablesModule } from './tables/tables.module'
     EspNodesModule,
     MicrophonesModule,
     TablesModule,
+    MappingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
