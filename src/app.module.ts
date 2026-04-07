@@ -13,6 +13,7 @@ import { TablesModule } from './tables/tables.module'
 import { MappingModule } from './mapping/mapping.module'
 import { EventsModule } from './events/events.module'
 import { MqttModule } from './mqtt/mqtt.module'
+import { IngestModule } from './ingest/ingest.module'
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { MqttModule } from './mqtt/mqtt.module'
     MappingModule,
     EventsModule,
     MqttModule,
+    IngestModule,
   ],
   controllers: [AppController],
   providers: [AppService],
