@@ -1,0 +1,123 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// MQTT TOPIC CONSTANTS
+// All 525 ESP32 nodes publish to topics under the `falcon/` namespace.
+//
+// Topic anatomy:
+//   falcon / center / {centerId} / {dataType}
+//
+// centerId is extracted at runtime from the MQTT context — we subscribe with
+// the MQTT single-level wildcard `+` so one @MessagePattern catches every center.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MQTT_TOPICS = {
+  /** ESP32 WiFi CSI / RSSI-based presence & fall detection.
+   *  Published by: ESP32 nodes (up to 5 per center = 525 total nodes).
+   *  Pattern: falcon/center/{centerId}/wifi-sensing */
+  WIFI_SENSING: 'falcon/center/+/wifi-sensing',
+
+  /** AI inference results from the camera-based vision pipeline.
+   *  Published by: the AI edge module (Docker container on site or cloud).
+   *  Pattern: falcon/center/{centerId}/ai-results */
+  AI_RESULTS: 'falcon/center/+/ai-results',
+
+  /** Raw audio-level readings from microphones.
+   *  Pattern: falcon/center/{centerId}/audio-level */
+  AUDIO_LEVEL: 'falcon/center/+/audio-level',
+
+  /** ESP32 heartbeats — used to mark devices ONLINE / OFFLINE.
+   *  Pattern: falcon/center/{centerId}/device-status */
+  DEVICE_STATUS: 'falcon/center/+/device-status',
+
+  /** Catch-all for custom / future subtopics under a center.
+   *  Pattern: falcon/center/{centerId}/# */
+  CENTER_ALL: 'falcon/center/+/#',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBSOCKET ROOM NAMES
+// Clients join these rooms after authenticating over the Socket.io connection.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** All SUPER_ADMIN sockets join this room and receive events from all 105 centers. */
+export const ROOM_SUPER_ADMIN = 'room:super_admin'
+
+/** ADMIN and AGENT sockets for a specific center join this room.
+ *  @example roomForCenter('clxyz123') → "room:center:clxyz123" */
+export const roomForCenter = (centerId: string) => `room:center:${centerId}`
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBSOCKET EVENT NAMES  (server → client)
+// These are the string event names the Next.js frontend listens for.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const WS_EVENTS = {
+  // ── Alerts (high-priority, require immediate attention) ───────────────────
+  /** A fall was detected at a table — CRITICAL */
+  FALL_DETECTED: 'alert:fall_detected',
+
+  /** Aggressive / violent behaviour detected by AI vision — HIGH */
+  AGGRESSION_DETECTED: 'alert:aggression_detected',
+
+  /** Audio level exceeded threshold — MEDIUM */
+  HIGH_AUDIO_LEVEL: 'alert:high_audio_level',
+
+  /** Crowd / overcrowding at a table detected — MEDIUM */
+  CROWD_DETECTED: 'alert:crowd_detected',
+
+  // ── Live updates (informational, lower frequency) ─────────────────────────
+  /** Regular WiFi sensing update — presence / motion state */
+  WIFI_SENSING_UPDATE: 'update:wifi_sensing',
+
+  /** AI inference result summary — confidence + bounding box */
+  AI_RESULTS_UPDATE: 'update:ai_results',
+
+  /** Microphone audio level sample */
+  AUDIO_LEVEL_UPDATE: 'update:audio_level',
+
+  /** ESP32 or camera came online / went offline */
+  DEVICE_STATUS_UPDATE: 'update:device_status',
+
+  // ── System ────────────────────────────────────────────────────────────────
+  /** Sent immediately after a client connects and joins rooms */
+  CONNECTED: 'system:connected',
+
+  /** Error sent back to a single socket */
+  ERROR: 'system:error',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBSOCKET EVENT NAMES  (client → server)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const WS_CLIENT_EVENTS = {
+  /** Client asks to join a room — payload: { room: string } */
+  JOIN_ROOM: 'join_room',
+
+  /** Client asks to leave a room — payload: { room: string } */
+  LEAVE_ROOM: 'leave_room',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALERT SEVERITY MAP  (used to populate the `severity` field in WS payloads)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AlertSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'
+
+export const AI_EVENT_SEVERITY: Record<string, AlertSeverity> = {
+  FALL_DETECTED: 'CRITICAL',
+  AGGRESSION: 'HIGH',
+  VIOLENT_BEHAVIOUR: 'HIGH',
+  CROWD: 'MEDIUM',
+  OVERCROWDING: 'MEDIUM',
+  SUSPICIOUS: 'MEDIUM',
+  MOTION: 'LOW',
+  NORMAL: 'INFO',
+}
+
+export const WIFI_EVENT_SEVERITY: Record<string, AlertSeverity> = {
+  FALL_DETECTED: 'CRITICAL',
+  SUDDEN_MOVEMENT: 'HIGH',
+  MOTION: 'LOW',
+  IDLE: 'INFO',
+  EMPTY: 'INFO',
+}

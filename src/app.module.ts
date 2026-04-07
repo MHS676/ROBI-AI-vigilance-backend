@@ -11,6 +11,8 @@ import { EspNodesModule } from './esp-nodes/esp-nodes.module'
 import { MicrophonesModule } from './microphones/microphones.module'
 import { TablesModule } from './tables/tables.module'
 import { MappingModule } from './mapping/mapping.module'
+import { EventsModule } from './events/events.module'
+import { MqttModule } from './mqtt/mqtt.module'
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { MappingModule } from './mapping/mapping.module'
     MicrophonesModule,
     TablesModule,
     MappingModule,
+    EventsModule,
+    MqttModule,
   ],
   controllers: [AppController],
   providers: [AppService],
