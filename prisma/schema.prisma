@@ -1,0 +1,225 @@
+// ============================================================
+// FALCON SECURITY LIMITED
+// Enterprise AI Surveillance System — Prisma Schema
+// Stack: NestJS + Prisma + PostgreSQL
+// 105 Centers | Multi-Tenant RBAC
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+/// System-wide roles for multi-tenant access control
+enum Role {
+  SUPER_ADMIN /// Full access across all 105 centers
+  ADMIN       /// Local admin — manages a single Center
+  AGENT       /// Assigned to one Table; limited read/write
+}
+
+/// Physical microphone channel designation
+enum MicrophoneChannel {
+  LEFT
+  RIGHT
+}
+
+/// Current operational status of hardware
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+// ============================================================
+// USER — Authentication & RBAC
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String   /// bcrypt-hashed
+  firstName    String
+  lastName     String
+  role         Role     @default(AGENT)
+  isActive     Boolean  @default(true)
+
+  /// SUPER_ADMIN: centerId is null (global scope)
+  /// ADMIN / AGENT: centerId must be set (local scope)
+  centerId     String?
+  center       Center?  @relation("CenterUsers", fields: [centerId], references: [id], onDelete: SetNull)
+
+  /// One Agent is assigned to exactly one Table (1:1 enforced via @unique on Table.agentId)
+  assignedTable Table?  @relation("AgentTable")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([centerId])
+  @@index([role])
+  @@map("users")
+}
+
+// ============================================================
+// CENTER — Physical Branch (1 of 105)
+// ============================================================
+
+model Center {
+  id          String   @id @default(cuid())
+  name        String   /// e.g. "Falcon Branch — Ikeja"
+  code        String   @unique /// e.g. "FAL-IKJ-001"
+  address     String?
+  city        String?
+  state       String?
+  country     String   @default("Nigeria")
+  phone       String?
+  isActive    Boolean  @default(true)
+
+  // ── Relations ──────────────────────────────────────────────
+  users        User[]        @relation("CenterUsers")
+  cameras      Camera[]      @relation("CenterCameras")
+  espNodes     EspNode[]     @relation("CenterEspNodes")
+  microphones  Microphone[]  @relation("CenterMicrophones")
+  tables       Table[]       @relation("CenterTables")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([code])
+  @@map("centers")
+}
+
+// ============================================================
+// CAMERA — Physical IP/CCTV Camera with RTSP stream
+// ============================================================
+
+model Camera {
+  id           String       @id @default(cuid())
+  name         String       /// e.g. "CAM-01 - Reception"
+  rtspUrl      String       /// e.g. "rtsp://admin:pass@192.168.1.10:554/stream1"
+  ipAddress    String?
+  model        String?      /// Hardware model / brand
+  status       DeviceStatus @default(ONLINE)
+  isActive     Boolean      @default(true)
+
+  centerId     String
+  center       Center       @relation("CenterCameras", fields: [centerId], references: [id], onDelete: Cascade)
+
+  /// ONE Camera belongs to exactly ONE Table (enforced via @unique on Table.cameraId)
+  table        Table?       @relation("CameraTable")
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([centerId])
+  @@index([status])
+  @@map("cameras")
+}
+
+// ============================================================
+// ESP NODE — WiFi Sensing Device (ESP32 / ESP8266)
+// ============================================================
+
+model EspNode {
+  id           String       @id @default(cuid())
+  name         String       /// e.g. "ESP-NODE-01"
+  macAddress   String       @unique /// Hardware MAC address
+  ipAddress    String?      /// Dynamic DHCP IP
+  firmwareVer  String?      /// e.g. "v2.1.4"
+  status       DeviceStatus @default(ONLINE)
+  isActive     Boolean      @default(true)
+  lastSeenAt   DateTime?    /// Last heartbeat timestamp
+
+  centerId     String
+  center       Center       @relation("CenterEspNodes", fields: [centerId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([centerId])
+  @@index([macAddress])
+  @@map("esp_nodes")
+}
+
+// ============================================================
+// MICROPHONE — Audio capture device (Left / Right channel)
+// ============================================================
+
+model Microphone {
+  id           String             @id @default(cuid())
+  name         String             /// e.g. "MIC-TABLE-03-LEFT"
+  channel      MicrophoneChannel  /// LEFT or RIGHT
+  ipAddress    String?
+  model        String?
+  status       DeviceStatus       @default(ONLINE)
+  isActive     Boolean            @default(true)
+
+  centerId     String
+  center       Center             @relation("CenterMicrophones", fields: [centerId], references: [id], onDelete: Cascade)
+
+  /// ONE Microphone belongs to exactly ONE Table (enforced via @unique on Table.microphoneId)
+  table        Table?             @relation("MicrophoneTable")
+
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([centerId])
+  @@index([channel])
+  @@map("microphones")
+}
+
+// ============================================================
+// TABLE — CORE MODEL
+// Physical customer-service desk / workstation.
+// Uniquely links:
+//   • ONE Camera        (with a Bounding Box: x, y, w, h)
+//   • ONE Microphone    (Left or Right channel)
+//   • ONE Agent (User)
+// All enforced at DB level via @unique constraints.
+// ============================================================
+
+model Table {
+  id           String   @id @default(cuid())
+  name         String   /// e.g. "Table 01 — Teller A"
+  tableNumber  Int      /// Physical table number within center
+  isActive     Boolean  @default(true)
+  notes        String?
+
+  // ── Center (multi-tenant anchor) ───────────────────────────
+  centerId     String
+  center       Center   @relation("CenterTables", fields: [centerId], references: [id], onDelete: Cascade)
+
+  // ── Camera + Bounding Box ──────────────────────────────────
+  /// @unique: enforces ONE camera per table (and one table per camera)
+  cameraId     String   @unique
+  camera       Camera   @relation("CameraTable", fields: [cameraId], references: [id])
+
+  /// Bounding box within camera frame: { "x": 100, "y": 50, "w": 300, "h": 200 }
+  /// Pixels or normalised [0–1] floats — agreed at integration time
+  boundingBox  Json
+
+  // ── Microphone ─────────────────────────────────────────────
+  /// @unique: enforces ONE microphone per table (and one table per microphone)
+  microphoneId String   @unique
+  microphone   Microphone @relation("MicrophoneTable", fields: [microphoneId], references: [id])
+
+  // ── Agent ──────────────────────────────────────────────────
+  /// @unique: enforces ONE agent per table (and one table per agent)
+  agentId      String   @unique
+  agent        User     @relation("AgentTable", fields: [agentId], references: [id])
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// A center cannot have two tables with the same number
+  @@unique([centerId, tableNumber])
+  @@index([centerId])
+  @@map("tables")
+}
