@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
+import { JwtModule, type JwtModuleOptions } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { AuthService } from './auth.service'
@@ -19,10 +19,12 @@ import { RolesGuard } from './guards/roles.guard'
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      useFactory: (config: ConfigService): JwtModuleOptions => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d'),
+          // Cast required: @nestjs/jwt@11 uses branded 'StringValue' from ms
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          expiresIn: config.get('JWT_EXPIRES_IN', '7d') as any,
           issuer: 'falcon-security-limited',
           audience: 'falcon-api',
         },
