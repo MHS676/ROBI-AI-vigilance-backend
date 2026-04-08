@@ -67,7 +67,7 @@ async function bootstrap() {
       clientId: `falcon-backend-${process.env.NODE_ENV ?? 'dev'}-${Date.now()}`,
       clean: true,
       connectTimeout: 4000,
-      reconnectPeriod: 1000,
+      reconnectPeriod: 5000,
       // Subscribe to all falcon topics with QoS 1 for at-least-once delivery
       subscribeOptions: { qos: 1 as const },
     },
