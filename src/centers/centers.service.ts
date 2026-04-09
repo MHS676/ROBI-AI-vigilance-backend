@@ -27,7 +27,7 @@ export class CentersService {
 
   // ── CENTERS CRUD ─────────────────────────────────────────────────────
 
-  async create(dto: CreateCenterDto, requestingUser: RequestUser) {
+  async create(dto: CreateCenterDto, requestingUser: RequestUser, mapUrl?: string) {
     if (requestingUser.role !== Role.SUPER_ADMIN) {
       throw new ForbiddenException('Only SUPER_ADMIN can create centers')
     }
@@ -39,7 +39,7 @@ export class CentersService {
       throw new ConflictException(`Center code ${dto.code} already exists`)
     }
 
-    return this.prisma.center.create({ data: dto })
+    return this.prisma.center.create({ data: { ...dto, ...(mapUrl && { mapUrl }) } })
   }
 
   async findAll(requestingUser: RequestUser) {

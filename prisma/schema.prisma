@@ -81,6 +81,7 @@ model Center {
   country     String   @default("Nigeria")
   phone       String?
   isActive    Boolean  @default(true)
+  mapUrl      String?  /// Uploaded floor-plan / site-map (SVG or PNG) — served from /uploads/center-maps/
 
   // ── Relations ──────────────────────────────────────────────
   users        User[]        @relation("CenterUsers")

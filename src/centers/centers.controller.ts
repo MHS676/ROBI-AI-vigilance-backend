@@ -7,15 +7,22 @@ import {
   Param,
   Body,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { diskStorage } from 'multer'
+import { extname, join } from 'path'
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiParam,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger'
 import { Role } from '@prisma/client'
 import { CentersService } from './centers.service'
@@ -28,6 +35,24 @@ import { Roles } from '../auth/decorators/roles.decorator'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import { RequestUser } from '../auth/interfaces/jwt-payload.interface'
 
+// ── Multer disk storage for center floor-plan maps ─────────────────────────
+const mapStorage = diskStorage({
+  destination: join(__dirname, '..', '..', 'uploads', 'center-maps'),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`
+    cb(null, `${unique}${extname(file.originalname)}`)
+  },
+})
+
+function mapFileFilter(
+  _req: unknown,
+  file: Express.Multer.File,
+  cb: (error: Error | null, accept: boolean) => void,
+) {
+  const allowed = ['image/svg+xml', 'image/png', 'image/jpeg', 'image/jpg']
+  cb(null, allowed.includes(file.mimetype))
+}
+
 @ApiTags('Centers')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,14 +64,37 @@ export class CentersController {
 
   @Post()
   @Roles(Role.SUPER_ADMIN)
+  @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Create a new center/branch',
     description: 'Creates one of the 105 physical Falcon Security branches. **SUPER_ADMIN only.**',
   })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name:    { type: 'string' },
+        code:    { type: 'string', example: 'FAL-ABJ-002' },
+        address: { type: 'string' },
+        city:    { type: 'string' },
+        state:   { type: 'string' },
+        country: { type: 'string' },
+        phone:   { type: 'string' },
+        mapFile: { type: 'string', format: 'binary' },
+      },
+      required: ['name', 'code'],
+    },
+  })
   @ApiResponse({ status: 201, description: 'Center created' })
   @ApiResponse({ status: 409, description: 'Center code already exists' })
-  create(@Body() dto: CreateCenterDto, @CurrentUser() user: RequestUser) {
-    return this.centersService.create(dto, user)
+  @UseInterceptors(FileInterceptor('mapFile', { storage: mapStorage, fileFilter: mapFileFilter, limits: { fileSize: 5 * 1024 * 1024 } }))
+  create(
+    @Body() dto: CreateCenterDto,
+    @UploadedFile() mapFile: Express.Multer.File | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const mapUrl = mapFile ? `/uploads/center-maps/${mapFile.filename}` : undefined
+    return this.centersService.create(dto, user, mapUrl)
   }
 
   @Get()
