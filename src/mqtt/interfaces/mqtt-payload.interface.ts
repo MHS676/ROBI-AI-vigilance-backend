@@ -100,7 +100,14 @@ export type DeviceType = 'ESP_NODE' | 'CAMERA' | 'MICROPHONE'
 export type DeviceStatusEvent = 'ONLINE' | 'OFFLINE' | 'REBOOT' | 'LOW_BATTERY' | 'ERROR'
 
 export interface DeviceStatusPayload extends MqttBasePayload {
+  /**
+   * DB id OR MAC address.
+   * ESP32 nodes that don't know their DB id send their MAC address here.
+   * The backend resolves it to the correct espNode record.
+   */
   deviceId: string
+  /** MAC address of the device (canonical identifier for ESP32 nodes). */
+  macAddress?: string
   deviceType: DeviceType
   status: DeviceStatusEvent
   /** IP address of the device at time of event */

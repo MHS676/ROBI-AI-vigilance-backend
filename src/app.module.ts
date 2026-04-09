@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { PrismaModule } from './prisma/prisma.module'
@@ -22,6 +23,9 @@ import { IngestModule } from './ingest/ingest.module'
       isGlobal: true,
       envFilePath: '.env',
     }),
+
+    // Task scheduling (required for @Cron in CameraPollerService)
+    ScheduleModule.forRoot(),
 
     // Database
     PrismaModule,

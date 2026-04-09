@@ -268,6 +268,25 @@ export class MqttController {
 
     const envelope = this.events.buildEnvelope(centerId, center.name, severity, data)
     this.events.emitToCenterAndSuperAdmin(centerId, WS_EVENTS.DEVICE_STATUS_UPDATE, envelope)
+
+    // ── Fire Red Alert if device went offline ──────────────────────────────
+    if (data.status === 'OFFLINE' || data.status === 'ERROR') {
+      const offlineEnvelope = this.events.buildEnvelope(
+        centerId, center.name, 'MEDIUM',
+        {
+          deviceId:   data.deviceId,
+          macAddress: data.macAddress,
+          deviceType: data.deviceType,
+          status:     data.status,
+          ipAddress:  data.ipAddress,
+          centerName: center.name,
+        },
+      )
+      this.events.emitToCenterAndSuperAdmin(centerId, WS_EVENTS.DEVICE_OFFLINE, offlineEnvelope)
+      this.logger.warn(
+        `🔴 Device OFFLINE alert [${center.code}] ${data.deviceType}=${data.deviceId ?? data.macAddress}`,
+      )
+    }
   }
 
   // ── DB persistence helpers ────────────────────────────────────────────────
@@ -277,14 +296,31 @@ export class MqttController {
     status: DeviceStatus,
   ): Promise<void> {
     if (data.deviceType === 'ESP_NODE') {
-      await this.prisma.espNode.updateMany({
-        where: { id: data.deviceId },
-        data: {
-          status,
-          lastSeenAt: new Date(data.timestamp * 1000),
-          ...(data.ipAddress && { ipAddress: data.ipAddress }),
-        },
-      })
+      // Prefer macAddress lookup — ESP32 nodes know their MAC, not their DB id.
+      // Fall back to id-based lookup for backward compatibility.
+      const mac = data.macAddress ?? data.deviceId
+      const isMac = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(mac)
+
+      if (isMac) {
+        await this.prisma.espNode.updateMany({
+          where: { macAddress: mac.toUpperCase() },
+          data: {
+            status,
+            lastSeenAt: new Date(data.timestamp * 1000),
+            ...(data.ipAddress && { ipAddress: data.ipAddress }),
+          },
+        })
+      } else {
+        // Fallback: id-based
+        await this.prisma.espNode.updateMany({
+          where: { id: data.deviceId },
+          data: {
+            status,
+            lastSeenAt: new Date(data.timestamp * 1000),
+            ...(data.ipAddress && { ipAddress: data.ipAddress }),
+          },
+        })
+      }
     } else if (data.deviceType === 'CAMERA') {
       await this.prisma.camera.updateMany({
         where: { id: data.deviceId },

@@ -77,6 +77,9 @@ export const WS_EVENTS = {
   /** ESP32 or camera came online / went offline */
   DEVICE_STATUS_UPDATE: 'update:device_status',
 
+  /** A camera or ESP32 node went OFFLINE — triggers Red Alert on dashboard */
+  DEVICE_OFFLINE: 'alert:device_offline',
+
   // ── System ────────────────────────────────────────────────────────────────
   /** Sent immediately after a client connects and joins rooms */
   CONNECTED: 'system:connected',
