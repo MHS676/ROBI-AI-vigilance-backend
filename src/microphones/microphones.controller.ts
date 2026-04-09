@@ -57,6 +57,13 @@ export class MicrophonesController {
     return this.microphonesService.update(id, dto, user)
   }
 
+  @Post(':id/ping')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({ summary: 'Ping microphone IP — updates DeviceStatus, returns latency' })
+  ping(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.microphonesService.ping(id, user)
+  }
+
   @Delete(':id')
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'Deactivate microphone' })

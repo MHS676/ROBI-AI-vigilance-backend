@@ -3,10 +3,28 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common'
+import * as net from 'net'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateMicrophoneDto } from './dto/create-microphone.dto'
 import { UpdateMicrophoneDto } from './dto/update-microphone.dto'
 import { Role } from '@prisma/client'
+
+// ─── TCP probe helper ─────────────────────────────────────────────────────────
+function tcpProbe(
+  host: string,
+  port = 80,
+  timeoutMs = 3000,
+): Promise<{ reachable: boolean; latencyMs: number }> {
+  return new Promise((resolve) => {
+    const start = Date.now()
+    const socket = new net.Socket()
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => { socket.destroy(); resolve({ reachable: true,  latencyMs: Date.now() - start }) })
+    socket.once('timeout', () => { socket.destroy(); resolve({ reachable: false, latencyMs: timeoutMs }) })
+    socket.once('error',   () => { socket.destroy(); resolve({ reachable: false, latencyMs: Date.now() - start }) })
+    socket.connect(port, host)
+  })
+}
 
 @Injectable()
 export class MicrophonesService {
@@ -61,6 +79,24 @@ export class MicrophonesService {
     }
 
     return mic
+  }
+
+  async ping(id: string, requestingUser: any) {
+    const mic = await this.findOne(id, requestingUser)
+
+    if (!mic.ipAddress) {
+      return { status: 'UNKNOWN', latencyMs: null, message: 'No IP address configured' }
+    }
+
+    const { reachable, latencyMs } = await tcpProbe(mic.ipAddress, 80)
+    const newStatus = reachable ? 'ONLINE' : 'OFFLINE'
+
+    await this.prisma.microphone.update({
+      where: { id },
+      data: { status: newStatus as any },
+    })
+
+    return { status: newStatus, latencyMs, ip: mic.ipAddress }
   }
 
   async update(id: string, dto: UpdateMicrophoneDto, requestingUser: any) {
