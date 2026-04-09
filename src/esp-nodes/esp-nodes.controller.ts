@@ -52,6 +52,14 @@ export class EspNodesController {
     return this.espNodesService.heartbeat(mac)
   }
 
+  /** TCP-probe the node IP and update status */
+  @Post(':id/ping')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({ summary: 'Ping ESP node IP — updates DeviceStatus, returns latency' })
+  ping(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.espNodesService.ping(id, user)
+  }
+
   @Patch(':id')
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'Update ESP node config' })

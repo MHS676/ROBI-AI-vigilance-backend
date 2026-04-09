@@ -3,10 +3,31 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common'
+import * as net from 'net'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateCameraDto } from './dto/create-camera.dto'
 import { UpdateCameraDto } from './dto/update-camera.dto'
 import { Role } from '@prisma/client'
+
+// ─── TCP probe: tries to open a socket to host:port within timeoutMs ──────────
+function tcpProbe(
+  host: string,
+  port = 554,
+  timeoutMs = 3000,
+): Promise<{ reachable: boolean; latencyMs: number }> {
+  return new Promise((resolve) => {
+    const start = Date.now()
+    const socket = new net.Socket()
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => {
+      socket.destroy()
+      resolve({ reachable: true, latencyMs: Date.now() - start })
+    })
+    socket.once('timeout', () => { socket.destroy(); resolve({ reachable: false, latencyMs: timeoutMs }) })
+    socket.once('error',   () => { socket.destroy(); resolve({ reachable: false, latencyMs: Date.now() - start }) })
+    socket.connect(port, host)
+  })
+}
 
 @Injectable()
 export class CamerasService {
@@ -63,6 +84,31 @@ export class CamerasService {
     if (!camera) throw new NotFoundException(`Camera ${id} not found`)
     this.scopeGuard(camera, requestingUser)
     return camera
+  }
+
+  async ping(id: string, requestingUser: any) {
+    const camera = await this.findOne(id, requestingUser)
+
+    if (!camera.ipAddress) {
+      return { status: 'UNKNOWN', latencyMs: null, message: 'No IP address configured' }
+    }
+
+    // Extract port from RTSP URL if available, otherwise use 554 (standard RTSP)
+    let port = 554
+    try {
+      const match = camera.rtspUrl?.match(/:(\/\/[^/]+:)(\d+)/)
+      if (match) port = parseInt(match[2], 10)
+    } catch { /* use default */ }
+
+    const { reachable, latencyMs } = await tcpProbe(camera.ipAddress, port)
+    const newStatus = reachable ? 'ONLINE' : 'OFFLINE'
+
+    await this.prisma.camera.update({
+      where: { id },
+      data: { status: newStatus as any },
+    })
+
+    return { status: newStatus, latencyMs, ip: camera.ipAddress }
   }
 
   async update(id: string, dto: UpdateCameraDto, requestingUser: any) {

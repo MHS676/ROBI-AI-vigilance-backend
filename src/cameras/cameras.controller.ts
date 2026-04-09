@@ -46,6 +46,14 @@ export class CamerasController {
     return this.camerasService.findOne(id, user)
   }
 
+  /** Ping the camera IP, update DeviceStatus, return {status, latencyMs} */
+  @Post(':id/ping')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({ summary: 'Ping camera IP — updates DeviceStatus in DB, returns latency' })
+  ping(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.camerasService.ping(id, user)
+  }
+
   @Patch(':id')
   @Roles(Role.SUPER_ADMIN, Role.ADMIN)
   @ApiOperation({ summary: 'Update camera info or RTSP URL' })
