@@ -53,6 +53,17 @@ enum InventoryDeviceType {
   CAMERA        /// IP camera discovered via ONVIF / WS-Discovery
 }
 
+/// AI inference features that can be individually enabled / disabled per camera.
+/// Stored as a JSON array on the Camera model so the set is extensible without
+/// a new migration for each new model.
+enum AiFeature {
+  WEAPON  /// knife, gun, pistol, rifle, weapon detection
+  FIGHT   /// physical altercation / aggression detection
+  FALL    /// person-fall detection
+  FIRE    /// fire and smoke detection
+  CROWD   /// over-crowding / crowd density detection
+}
+
 // ============================================================
 // USER — Authentication & RBAC
 // ============================================================
@@ -125,6 +136,12 @@ model Camera {
   model        String?      /// Hardware model / brand
   status       DeviceStatus @default(ONLINE)
   isActive     Boolean      @default(true)
+
+  /// Enabled AI inference features for this camera.
+  /// Stored as a JSON array, e.g. ["WEAPON","FALL","FIGHT"].
+  /// Defaults to all features enabled on first save.
+  /// Maps to AiFeature enum values — validated in the DTO layer.
+  aiFeatures   Json         @default("[\"WEAPON\",\"FIGHT\",\"FALL\",\"FIRE\",\"CROWD\"]")
 
   centerId     String
   center       Center       @relation("CenterCameras", fields: [centerId], references: [id], onDelete: Cascade)

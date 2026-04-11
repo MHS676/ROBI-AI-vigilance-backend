@@ -9,6 +9,7 @@ import {
   AI_EVENT_SEVERITY,
   AlertSeverity,
 } from '../mqtt/mqtt.constants'
+import { ANOMALY_TO_FEATURE } from '../cameras/dto/update-ai-features.dto'
 
 // ─── DTO ─────────────────────────────────────────────────────────────────────
 class IngestAlertDto {
@@ -67,6 +68,27 @@ export class IngestController {
         `❌ /ingest/ai-alert — invalid X-Service-Key (centerId=${dto.center_id})`,
       )
       throw new UnauthorizedException('Invalid service key')
+    }
+
+    // ── AI Feature gate — skip broadcast if feature is disabled for this camera
+    const requiredFeature = ANOMALY_TO_FEATURE[dto.anomaly_type]
+    if (requiredFeature) {
+      const cam = await this.prisma.camera.findUnique({
+        where:  { id: dto.camera_id },
+        select: { aiFeatures: true },
+      })
+      // aiFeatures is stored as Json — cast to string[]
+      const enabled = (cam?.aiFeatures ?? []) as string[]
+      if (!enabled.includes(requiredFeature)) {
+        this.logger.debug(
+          `🔇 Alert suppressed — feature ${requiredFeature} disabled for camera ${dto.camera_id}`,
+        )
+        return {
+          message: 'Alert suppressed — feature disabled for this camera',
+          centerId: dto.center_id,
+          disabledFeature: requiredFeature,
+        }
+      }
     }
 
     // ── Resolve center name ───────────────────────────────────────────────────

@@ -131,6 +131,10 @@ export const WS_EVENTS = {
 
   /** Device sent provisioning ACK back to broker */
   PROVISION_ACK: 'provisioning:provision_ack',
+
+  // ── AI Configuration ────────────────────────────────────────────────────────
+  /** Camera AI features updated — emitted to SUPER_ADMIN + center room */
+  AI_FEATURES_UPDATED: 'update:ai_features',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────

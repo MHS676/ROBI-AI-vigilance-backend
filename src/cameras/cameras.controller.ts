@@ -13,6 +13,7 @@ import { Role } from '@prisma/client'
 import { CamerasService } from './cameras.service'
 import { CreateCameraDto } from './dto/create-camera.dto'
 import { UpdateCameraDto } from './dto/update-camera.dto'
+import { UpdateAiFeaturesDto } from './dto/update-ai-features.dto'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { Roles } from '../auth/decorators/roles.decorator'
@@ -63,6 +64,26 @@ export class CamerasController {
     @CurrentUser() user: any,
   ) {
     return this.camerasService.update(id, dto, user)
+  }
+
+  /**
+   * Toggle individual AI inference features for a specific camera.
+   * Persists to DB, notifies the FastAPI AI worker, and emits a WS event.
+   */
+  @Patch(':id/ai-features')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({
+    summary: '🤖 Update enabled AI features for a camera',
+    description:
+      'Persists the new feature set, pushes the config to the AI worker, ' +
+      'and broadcasts `update:ai_features` over WebSocket.',
+  })
+  updateAiFeatures(
+    @Param('id') id: string,
+    @Body() dto: UpdateAiFeaturesDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.camerasService.updateAiFeatures(id, dto, user)
   }
 
   @Delete(':id')
