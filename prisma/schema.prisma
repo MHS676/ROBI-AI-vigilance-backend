@@ -38,6 +38,21 @@ enum DeviceStatus {
   MAINTENANCE
 }
 
+/// Lifecycle state of a device in the inventory
+enum InventoryStatus {
+  PENDING     /// Discovered via MQTT birth message — awaiting Super Admin approval
+  ASSIGNED    /// Approved and provisioned to a specific Center
+  OFFLINE     /// Was assigned but has gone offline (heartbeat timeout)
+  REJECTED    /// Super Admin explicitly rejected this device
+}
+
+/// Hardware type reported in the MQTT birth message
+enum InventoryDeviceType {
+  ESP32         /// WiFi sensing / ESP32 node
+  AI_MICROPHONE /// Networked AI microphone
+  CAMERA        /// IP camera discovered via ONVIF / WS-Discovery
+}
+
 // ============================================================
 // USER — Authentication & RBAC
 // ============================================================
@@ -89,6 +104,7 @@ model Center {
   espNodes     EspNode[]     @relation("CenterEspNodes")
   microphones  Microphone[]  @relation("CenterMicrophones")
   tables       Table[]       @relation("CenterTables")
+  inventory    DeviceInventory[] @relation("CenterInventory")
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -223,4 +239,56 @@ model Table {
   @@unique([centerId, tableNumber])
   @@index([centerId])
   @@map("tables")
+}
+
+// ============================================================
+// DEVICE INVENTORY — Zero-Config Hardware Provisioning
+// Tracks every device that has ever announced itself via the
+// MQTT birth topic (falcon/discovery/pending) or ONVIF scan.
+//
+// Lifecycle:
+//   PENDING → (Super Admin assigns) → ASSIGNED
+//   PENDING → (Super Admin rejects) → REJECTED
+//   ASSIGNED → (heartbeat timeout)  → OFFLINE
+// ============================================================
+
+model DeviceInventory {
+  id               String              @id @default(cuid())
+  deviceType       InventoryDeviceType
+
+  /// Hardware MAC address — unique identifier from the device itself
+  macAddress       String?             @unique
+  ipAddress        String?             /// Current IP (DHCP — may change)
+  firmwareVer      String?             /// e.g. "v2.1.4"
+  model            String?             /// Hardware model / brand
+  hostname         String?             /// mDNS hostname if reported
+  manufacturer     String?             /// e.g. "Hikvision", "Tiandy"
+
+  /// For cameras discovered via ONVIF/WS-Discovery
+  onvifXAddr       String?             /// ONVIF service URL
+  rtspUrl          String?             /// Detected RTSP stream URL
+
+  status           InventoryStatus     @default(PENDING)
+
+  /// Set once Super Admin approves and assigns to a center
+  centerId         String?
+  center           Center?             @relation("CenterInventory", fields: [centerId], references: [id], onDelete: SetNull)
+
+  /// Raw MQTT birth payload stored for diagnostics
+  discoveryPayload Json?
+  /// Config that was MQTT-published back to the device on provisioning
+  provisionConfig  Json?
+
+  lastSeenAt       DateTime?           /// Last heartbeat / birth message timestamp
+  provisionedAt    DateTime?           /// When provisioning config was sent
+
+  notes            String?
+
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([status])
+  @@index([deviceType])
+  @@index([centerId])
+  @@map("device_inventory")
 }

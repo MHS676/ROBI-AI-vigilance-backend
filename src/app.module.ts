@@ -15,6 +15,7 @@ import { MappingModule } from './mapping/mapping.module'
 import { EventsModule } from './events/events.module'
 import { MqttModule } from './mqtt/mqtt.module'
 import { IngestModule } from './ingest/ingest.module'
+import { ProvisioningModule } from './provisioning/provisioning.module'
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { IngestModule } from './ingest/ingest.module'
     EventsModule,
     MqttModule,
     IngestModule,
+    ProvisioningModule,
   ],
   controllers: [AppController],
   providers: [AppService],

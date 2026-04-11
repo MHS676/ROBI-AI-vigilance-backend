@@ -53,6 +53,7 @@ async function bootstrap() {
     .addTag('Microphones', 'Audio capture — LEFT/RIGHT channels')
     .addTag('Tables', 'Core: Camera + BoundingBox + Microphone + Agent')
     .addTag('Mapping', 'Hardware mapping — link tables to camera/mic/agent')
+    .addTag('Provisioning', 'Zero-Config Hardware Provisioning — discovery, approval, ONVIF scan')
     .build()
 
   const document = SwaggerModule.createDocument(app, config)

@@ -31,7 +31,39 @@ export const MQTT_TOPICS = {
   /** Catch-all for custom / future subtopics under a center.
    *  Pattern: falcon/center/{centerId}/# */
   CENTER_ALL: 'falcon/center/+/#',
+
+  // ── Zero-Config Provisioning ──────────────────────────────────────────────
+
+  /** Birth / announcement message published by any new ESP32 or AI-Mic.
+   *  Device publishes: { macAddress, firmwareVer, deviceType, ipAddress, hostname }
+   *  QoS 1 — retained so late-connecting server still receives it. */
+  DISCOVERY_BIRTH: 'falcon/discovery/pending',
+
+  /** Provisioning config sent FROM backend TO a specific device.
+   *  Topic: falcon/provision/{mac_with_underscores}
+   *  Payload: { centerId, tableId?, wifiSsid, wifiPassword, serverUrl } */
+  PROVISION_DEVICE: 'falcon/provision/+',
+
+  /** Acknowledgement sent FROM device TO backend after receiving config.
+   *  Topic: falcon/provision/ack/{mac_with_underscores}
+   *  Payload: { macAddress, status: 'OK' | 'ERROR', message? } */
+  PROVISION_ACK: 'falcon/provision/ack/+',
 } as const
+
+/**
+ * Build the MQTT topic to push a provisioning config to a specific device.
+ * MAC colons are replaced with underscores for MQTT topic safety.
+ * @example provisionTopic('AA:BB:CC:DD:EE:01') → 'falcon/provision/AA_BB_CC_DD_EE_01'
+ */
+export const provisionTopic = (macAddress: string): string =>
+  `falcon/provision/${macAddress.replace(/:/g, '_')}`
+
+/**
+ * Build the MQTT topic a device publishes its provisioning ACK to.
+ * @example provisionAckTopic('AA:BB:CC:DD:EE:01') → 'falcon/provision/ack/AA_BB_CC_DD_EE_01'
+ */
+export const provisionAckTopic = (macAddress: string): string =>
+  `falcon/provision/ack/${macAddress.replace(/:/g, '_')}`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WEBSOCKET ROOM NAMES
@@ -86,6 +118,19 @@ export const WS_EVENTS = {
 
   /** Error sent back to a single socket */
   ERROR: 'system:error',
+
+  // ── Provisioning (Super Admin only) ────────────────────────────────────────
+  /** New device announced via MQTT birth message — emitted to SUPER_ADMIN room */
+  DEVICE_DISCOVERED: 'provisioning:device_discovered',
+
+  /** Super Admin provisioned a device — config sent to device via MQTT */
+  DEVICE_PROVISIONED: 'provisioning:device_provisioned',
+
+  /** Super Admin rejected a pending device */
+  DEVICE_REJECTED: 'provisioning:device_rejected',
+
+  /** Device sent provisioning ACK back to broker */
+  PROVISION_ACK: 'provisioning:provision_ack',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
