@@ -1,6 +1,6 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, Logger } from '@nestjs/common'
+import { Controller, Post, Patch, Body, Headers, UnauthorizedException, Logger, Get } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
-import { IsString, IsNumber, IsArray, IsOptional, IsNotEmpty } from 'class-validator'
+import { IsString, IsNumber, IsArray, IsOptional, IsNotEmpty, IsBoolean } from 'class-validator'
 import { ConfigService } from '@nestjs/config'
 import { EventsGateway } from '../events/events.gateway'
 import { PrismaService } from '../prisma/prisma.service'
@@ -11,7 +11,7 @@ import {
 } from '../mqtt/mqtt.constants'
 import { ANOMALY_TO_FEATURE } from '../cameras/dto/update-ai-features.dto'
 
-// ─── DTO ─────────────────────────────────────────────────────────────────────
+// ─── DTOs ─────────────────────────────────────────────────────────────────────
 class IngestAlertDto {
   @IsString() @IsNotEmpty() center_id: string
   @IsString() @IsNotEmpty() camera_id: string
@@ -22,6 +22,23 @@ class IngestAlertDto {
   @IsArray() detections: Record<string, unknown>[]
   @IsNumber() timestamp: number
   @IsString() @IsOptional() source?: string
+  /** Confidence score 0–100 from the AI model */
+  @IsNumber() @IsOptional() confidence?: number
+  /** Which sensor tech triggered this alert: CCTV | WIFI | AUDIO */
+  @IsString() @IsOptional() tech?: string
+}
+
+class ResourceSaverDto {
+  @IsBoolean() enabled: boolean
+  /** Optional centerId — if omitted, applies globally */
+  @IsString() @IsOptional() centerId?: string
+}
+
+class HybridSourceDto {
+  @IsNumber() objectiveId: number
+  @IsString() primarySource: string
+  @IsBoolean() preferLowCompute: boolean
+  @IsString() @IsOptional() centerId?: string
 }
 
 /**
@@ -35,11 +52,32 @@ class IngestAlertDto {
  *   - room:center:{centerId}
  *
  * This way the AI service doesn't need to speak MQTT — it just POSTs here.
+ *
+ * Additional endpoints:
+ *   PATCH /ingest/resource-saver  — toggle GPU Resource Saver Mode
+ *   PATCH /ingest/hybrid-source   — change hybrid source priority
+ *   GET   /ingest/resource-saver  — read current mode state
  */
 @ApiTags('Ingest (service-to-service)')
 @Controller('ingest')
 export class IngestController {
   private readonly logger = new Logger(IngestController.name)
+
+  /**
+   * In-memory Resource Saver Mode state.
+   * Key: centerId | 'global'
+   * Value: true = resource saver ON (high-compute CCTV skipped unless WiFi/Audio triggered first)
+   */
+  private resourceSaverMode: Record<string, boolean> = {}
+
+  /**
+   * Hybrid source priority per objective (in-memory, per center).
+   * Key: `${centerId}:${objectiveId}` | `global:${objectiveId}`
+   */
+  private hybridSources: Record<string, { primarySource: string; preferLowCompute: boolean }> = {}
+
+  /** Track which centers have a recent WiFi/Audio anomaly (for GPU gate) */
+  private recentSensorAnomalies = new Map<string, number>() // centerId → expiry epoch ms
 
   constructor(
     private readonly events: EventsGateway,
@@ -47,13 +85,105 @@ export class IngestController {
     private readonly config: ConfigService,
   ) {}
 
+  // ── Resource Saver Mode endpoints ─────────────────────────────────────────
+
+  @Get('resource-saver')
+  @ApiOperation({ summary: 'Get current Resource Saver Mode state' })
+  getResourceSaverMode() {
+    return { resourceSaverMode: this.resourceSaverMode, hybridSources: this.hybridSources }
+  }
+
+  @Patch('resource-saver')
+  @ApiOperation({
+    summary: '⚡ Toggle GPU Resource Saver Mode',
+    description:
+      'When enabled, high-compute CCTV models (face recognition, weapon detection) ' +
+      'only activate AFTER WiFi Sees or Audio AI detects an initial anomaly. ' +
+      'Drastically reduces GPU VRAM usage during quiet periods.',
+  })
+  setResourceSaverMode(
+    @Body() dto: ResourceSaverDto,
+    @Headers('x-service-key') serviceKey: string,
+  ) {
+    const expected = this.config.get<string>('NESTJS_SERVICE_KEY') ?? ''
+    if (!expected || serviceKey !== expected) throw new UnauthorizedException('Invalid service key')
+
+    const key = dto.centerId ?? 'global'
+    this.resourceSaverMode[key] = dto.enabled
+    this.logger.log(`⚡ Resource Saver Mode ${dto.enabled ? 'ON' : 'OFF'} — ${key}`)
+
+    // Broadcast to all super admins
+    const rsEnvelope = this.events.buildEnvelope(
+      dto.centerId ?? 'global',
+      dto.centerId ?? 'global',
+      'INFO',
+      { centerId: dto.centerId ?? 'global', enabled: dto.enabled, updatedAt: new Date().toISOString() },
+    )
+    this.events.emitToCenterAndSuperAdmin(
+      dto.centerId ?? 'global',
+      WS_EVENTS.RESOURCE_SAVER_CHANGED,
+      rsEnvelope,
+    )
+    return { message: 'Resource Saver Mode updated', key, enabled: dto.enabled }
+  }
+
+  @Patch('hybrid-source')
+  @ApiOperation({ summary: '🔀 Update hybrid source priority for an objective' })
+  setHybridSource(
+    @Body() dto: HybridSourceDto,
+    @Headers('x-service-key') serviceKey: string,
+  ) {
+    const expected = this.config.get<string>('NESTJS_SERVICE_KEY') ?? ''
+    if (!expected || serviceKey !== expected) throw new UnauthorizedException('Invalid service key')
+
+    const key = `${dto.centerId ?? 'global'}:${dto.objectiveId}`
+    this.hybridSources[key] = { primarySource: dto.primarySource, preferLowCompute: dto.preferLowCompute }
+    this.logger.log(`🔀 HybridSource updated — ${key} → ${dto.primarySource}`)
+
+    const hsEnvelope = this.events.buildEnvelope(
+      dto.centerId ?? 'global',
+      dto.centerId ?? 'global',
+      'INFO',
+      { ...dto, updatedAt: new Date().toISOString() },
+    )
+    this.events.emitToCenterAndSuperAdmin(
+      dto.centerId ?? 'global',
+      WS_EVENTS.HYBRID_SOURCE_CHANGED,
+      hsEnvelope,
+    )
+    return { message: 'Hybrid source updated', key }
+  }
+
+  /**
+   * Called by WiFi Sees / Audio AI to signal an anomaly detected via low-compute sensors.
+   * This primes the GPU gate so the next CCTV alert within 30s will be allowed through
+   * even in Resource Saver Mode.
+   */
+  @Post('sensor-anomaly')
+  @ApiOperation({
+    summary: '📡 Register a WiFi/Audio anomaly (arms GPU gate for 30 s)',
+  })
+  registerSensorAnomaly(
+    @Body() body: { center_id: string; tech: string; objectiveId?: number; confidence?: number },
+    @Headers('x-service-key') serviceKey: string,
+  ) {
+    const expected = this.config.get<string>('NESTJS_SERVICE_KEY') ?? ''
+    if (!expected || serviceKey !== expected) throw new UnauthorizedException('Invalid service key')
+
+    const expiry = Date.now() + 30_000
+    this.recentSensorAnomalies.set(body.center_id, expiry)
+    this.logger.debug(`📡 Sensor anomaly arm — center=${body.center_id} tech=${body.tech} expiry=+30s`)
+    return { armed: true, expiresAt: new Date(expiry).toISOString() }
+  }
+
   @Post('ai-alert')
   @ApiOperation({
     summary: '🤖 Receive AI anomaly alert from the Python edge worker',
     description:
       'Called by the Falcon AI Microservice (FastAPI).  ' +
       'Protected by X-Service-Key header.  ' +
-      'Emits a WebSocket event to SUPER_ADMIN + center-specific rooms.',
+      'Emits a WebSocket event to SUPER_ADMIN + center-specific rooms.  ' +
+      'Respects Resource Saver Mode GPU gate and per-camera AI feature toggles.',
   })
   @ApiResponse({ status: 201, description: 'Alert received and broadcast' })
   @ApiResponse({ status: 401, description: 'Missing or invalid X-Service-Key' })
@@ -64,10 +194,28 @@ export class IngestController {
     // ── Auth — shared secret between NestJS and the AI service ───────────────
     const expected = this.config.get<string>('NESTJS_SERVICE_KEY') ?? ''
     if (!expected || serviceKey !== expected) {
-      this.logger.warn(
-        `❌ /ingest/ai-alert — invalid X-Service-Key (centerId=${dto.center_id})`,
-      )
+      this.logger.warn(`❌ /ingest/ai-alert — invalid X-Service-Key (centerId=${dto.center_id})`)
       throw new UnauthorizedException('Invalid service key')
+    }
+
+    // ── Resource Saver Mode GPU gate ─────────────────────────────────────────
+    // If high-compute CCTV detection + resource saver is ON for this center
+    // and no recent WiFi/Audio anomaly has armed the gate → suppress
+    const rsGlobal = this.resourceSaverMode['global'] ?? false
+    const rsCenter = this.resourceSaverMode[dto.center_id] ?? rsGlobal
+    const HIGH_COMPUTE_ANOMALIES = ['WEAPON_DETECTED', 'FIGHT_DETECTED', 'FIRE_DETECTED']
+    if (rsCenter && HIGH_COMPUTE_ANOMALIES.includes(dto.anomaly_type)) {
+      const armExpiry = this.recentSensorAnomalies.get(dto.center_id) ?? 0
+      if (Date.now() > armExpiry) {
+        this.logger.debug(
+          `⚡ Resource Saver suppressed high-compute alert — center=${dto.center_id} anomaly=${dto.anomaly_type}`,
+        )
+        return {
+          message: 'Suppressed by Resource Saver Mode — no prior sensor anomaly',
+          centerId: dto.center_id,
+          anomalyType: dto.anomaly_type,
+        }
+      }
     }
 
     // ── AI Feature gate — skip broadcast if feature is disabled for this camera
@@ -77,7 +225,6 @@ export class IngestController {
         where:  { id: dto.camera_id },
         select: { aiFeatures: true },
       })
-      // aiFeatures is stored as Json — cast to string[]
       const enabled = (cam?.aiFeatures ?? []) as string[]
       if (!enabled.includes(requiredFeature)) {
         this.logger.debug(
@@ -93,21 +240,27 @@ export class IngestController {
 
     // ── Resolve center name ───────────────────────────────────────────────────
     const center = await this.prisma.center.findUnique({
-      where: { id: dto.center_id },
+      where:  { id: dto.center_id },
       select: { name: true, code: true },
     })
-
     const centerName = center ? `${center.name} (${center.code})` : dto.center_id
 
     // ── Map severity ──────────────────────────────────────────────────────────
     const severity = (dto.severity as AlertSeverity) ?? 'HIGH'
 
-    // ── Pick the correct WS event name ────────────────────────────────────────
+    // ── Map anomaly → WS event name ───────────────────────────────────────────
     const wsEventMap: Record<string, string> = {
-      WEAPON_DETECTED: WS_EVENTS.FALL_DETECTED,     // reuse CRITICAL channel
-      FALL_DETECTED: WS_EVENTS.FALL_DETECTED,
-      FIGHT_DETECTED: WS_EVENTS.AGGRESSION_DETECTED,
-      FIRE_DETECTED: WS_EVENTS.AI_RESULTS_UPDATE,
+      WEAPON_DETECTED:  WS_EVENTS.WEAPON_DETECTED,
+      FIGHT_DETECTED:   WS_EVENTS.AGGRESSION_DETECTED,
+      FALL_DETECTED:    WS_EVENTS.FALL_DETECTED,
+      FIRE_DETECTED:    WS_EVENTS.FIRE_DETECTED,
+      CROWD_DETECTED:   WS_EVENTS.CROWD_DETECTED,
+      SICK_DETECTED:    WS_EVENTS.SICK_DETECTED,
+      IDLE_AGENT:       WS_EVENTS.IDLE_AGENT,
+      LONG_SERVICE:     WS_EVENTS.LONG_SERVICE,
+      LONG_STAY:        WS_EVENTS.LONG_STAY,
+      VANDALISM:        WS_EVENTS.VANDALISM_DETECTED,
+      IRATE_CUSTOMER:   WS_EVENTS.IRATE_CUSTOMER,
     }
     const wsEvent = wsEventMap[dto.anomaly_type] ?? WS_EVENTS.AI_RESULTS_UPDATE
 
@@ -117,13 +270,15 @@ export class IngestController {
       centerName,
       severity,
       {
-        source: dto.source ?? 'ai-service',
-        cameraId: dto.camera_id,
-        tableId: dto.table_id,
-        anomalyType: dto.anomaly_type,
+        source:       dto.source ?? 'ai-service',
+        tech:         dto.tech   ?? 'CCTV',
+        confidence:   dto.confidence ?? null,
+        cameraId:     dto.camera_id,
+        tableId:      dto.table_id,
+        anomalyType:  dto.anomaly_type,
         primaryEvent: dto.primary_event,
-        detections: dto.detections,
-        timestamp: dto.timestamp,
+        detections:   dto.detections,
+        timestamp:    dto.timestamp,
       },
     )
 
@@ -132,7 +287,8 @@ export class IngestController {
     this.logger.log(
       `🚨 AI alert broadcast  center=${centerName}  ` +
         `anomaly=${dto.anomaly_type}  severity=${severity}  ` +
-        `detections=${dto.detections.length}  source=${dto.source ?? 'ai-service'}`,
+        `confidence=${dto.confidence ?? '—'}  tech=${dto.tech ?? 'CCTV'}  ` +
+        `detections=${dto.detections.length}`,
     )
 
     return {
@@ -140,6 +296,7 @@ export class IngestController {
       centerId: dto.center_id,
       wsEvent,
       severity,
+      confidence: dto.confidence ?? null,
     }
   }
 }

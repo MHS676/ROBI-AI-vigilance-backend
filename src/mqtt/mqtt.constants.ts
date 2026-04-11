@@ -135,6 +135,49 @@ export const WS_EVENTS = {
   // ── AI Configuration ────────────────────────────────────────────────────────
   /** Camera AI features updated — emitted to SUPER_ADMIN + center room */
   AI_FEATURES_UPDATED: 'update:ai_features',
+
+  // ── Enterprise Dashboard ────────────────────────────────────────────────────
+  /** Objective row status changed — payload: { objectiveId, status, confidence, tech } */
+  OBJECTIVE_STATUS: 'update:objective_status',
+
+  /** Resource Saver Mode toggled by Super Admin */
+  RESOURCE_SAVER_CHANGED: 'update:resource_saver',
+
+  /** Hybrid source priority changed for an objective */
+  HYBRID_SOURCE_CHANGED: 'update:hybrid_source',
+
+  /** Weapon / explosive item detected — CRITICAL */
+  WEAPON_DETECTED: 'alert:weapon_detected',
+
+  /** Fire / smoke detected — CRITICAL */
+  FIRE_DETECTED: 'alert:fire_detected',
+
+  /** Person sudden sick / incapacitated — HIGH */
+  SICK_DETECTED: 'alert:sick_detected',
+
+  /** Idle agent / empty counter detected — MEDIUM */
+  IDLE_AGENT: 'alert:idle_agent',
+
+  /** Long serving time threshold exceeded — MEDIUM */
+  LONG_SERVICE: 'alert:long_service',
+
+  /** Individual staying too long in center — MEDIUM */
+  LONG_STAY: 'alert:long_stay',
+
+  /** Vandalism / shouting / slang detected via audio — HIGH */
+  VANDALISM_DETECTED: 'alert:vandalism_detected',
+
+  /** Irate customer detected via facial expression — HIGH */
+  IRATE_CUSTOMER: 'alert:irate_customer',
+
+  /** Physically challenged visitor identified — INFO */
+  CHALLENGED_VISITOR: 'alert:challenged_visitor',
+
+  /** Token issued without physical visitor presence — MEDIUM */
+  GHOST_TOKEN: 'alert:ghost_token',
+
+  /** Repeated customer visit within time frame — INFO */
+  REPEATED_VISIT: 'alert:repeated_visit',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
