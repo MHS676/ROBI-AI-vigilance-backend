@@ -72,20 +72,40 @@ export class CameraPollerService implements OnModuleInit {
   // ── Cron: every 30 seconds ──────────────────────────────────────────────────
   @Cron(CronExpression.EVERY_30_SECONDS)
   async pollAll(): Promise<void> {
-    const cameras = await this.prisma.camera.findMany({
-      where: {
-        isActive: true,
-        ipAddress: { not: null },
-      },
-      select: {
-        id: true,
-        name: true,
-        ipAddress: true,
-        rtspUrl: true,
-        status: true,
-        centerId: true,
-      },
-    })
+    let cameras: Array<{
+      id: string
+      name: string
+      ipAddress: string | null
+      rtspUrl: string
+      status: DeviceStatus
+      centerId: string
+    }> = []
+
+    // Guard: DB may be temporarily unreachable (P1001). Skip the poll cycle
+    // rather than letting the error bubble up to the [Scheduler] error handler.
+    try {
+      cameras = await this.prisma.camera.findMany({
+        where: {
+          isActive: true,
+          ipAddress: { not: null },
+        },
+        select: {
+          id: true,
+          name: true,
+          ipAddress: true,
+          rtspUrl: true,
+          status: true,
+          centerId: true,
+        },
+      })
+    } catch (err) {
+      this.logger.warn(
+        `📷 Poll cycle skipped — DB unreachable: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+      return
+    }
 
     if (cameras.length === 0) return
 
@@ -122,10 +142,19 @@ export class CameraPollerService implements OnModuleInit {
     )
 
     // ── 1. Persist ──────────────────────────────────────────────────────────
-    await this.prisma.camera.update({
-      where: { id: cam.id },
-      data: { status: newStatus },
-    })
+    try {
+      await this.prisma.camera.update({
+        where: { id: cam.id },
+        data: { status: newStatus },
+      })
+    } catch (err) {
+      this.logger.warn(
+        `📷 Could not persist status for "${cam.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      )
+      return
+    }
 
     // ── 2. Resolve center ───────────────────────────────────────────────────
     const center = await this.resolveCenter(cam.centerId)
