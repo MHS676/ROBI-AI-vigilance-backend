@@ -116,6 +116,7 @@ model Center {
   microphones  Microphone[]  @relation("CenterMicrophones")
   tables       Table[]       @relation("CenterTables")
   inventory    DeviceInventory[] @relation("CenterInventory")
+  alerts       Alert[]       /// All AI/sensor alerts generated within this center
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -148,6 +149,7 @@ model Camera {
 
   /// ONE Camera belongs to exactly ONE Table (enforced via @unique on Table.cameraId)
   table        Table?       @relation("CameraTable")
+  alerts       Alert[]      /// AI-generated alerts captured by this camera
 
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -249,6 +251,21 @@ model Table {
   agentId      String   @unique
   agent        User     @relation("AgentTable", fields: [agentId], references: [id])
 
+  // ── Spatial Gating — 5-foot WiFi / Audio zone ──────────────
+  /// Pixel coordinates of the ESP32 WiFi sensing zone on the floor plan.
+  /// Used for 5-foot spatial gating: only fire alerts when a person is
+  /// detected within this box around the service desk.
+  wifiZoneX        Int? /// Top-left X of the WiFi gate zone (pixels)
+  wifiZoneY        Int? /// Top-left Y of the WiFi gate zone (pixels)
+  wifiZoneWidth    Int? /// Width of the WiFi gate zone (pixels)
+  wifiZoneHeight   Int? /// Height of the WiFi gate zone (pixels)
+
+  /// Decibel threshold above which the microphone triggers an audio alert.
+  /// Overrides the system default when set. Typical range: 50–120 dB.
+  audioThresholdDb Int? /// Per-table audio alert threshold in dB
+
+  alerts       Alert[] /// AI/sensor alerts at this table
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -308,4 +325,50 @@ model DeviceInventory {
   @@index([deviceType])
   @@index([centerId])
   @@map("device_inventory")
+}
+
+// ============================================================
+// ALERT — Persisted AI / Sensor Alert Record
+// Created whenever the inference pipeline or a sensor fires an
+// alert that meets the confidence / threshold criteria.
+// The evidence JPEG frame is uploaded to S3 and the presigned
+// URL stored in imageUrl for audit and review.
+// ============================================================
+
+model Alert {
+  id         String   @id @default(uuid())
+
+  /// Alert category — mirrors AiFeature values plus sensor-derived events.
+  /// e.g. "WEAPON", "FALL", "FIGHT", "FIRE", "CROWD",
+  ///      "HIGH_AUDIO", "WIFI_FALL", "DEVICE_OFFLINE"
+  type       String
+
+  /// Severity level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO"
+  severity   String
+
+  /// Model / sensor confidence score (0.0 – 1.0)
+  confidence Float
+
+  /// S3 presigned URL of the JPEG evidence frame captured at alert time (optional)
+  imageUrl   String?
+
+  timestamp  DateTime @default(now())
+
+  // ── Relations ──────────────────────────────────────────────
+  centerId   String
+  center     Center   @relation(fields: [centerId], references: [id], onDelete: Cascade)
+
+  tableId    String?
+  table      Table?   @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  cameraId   String?
+  camera     Camera?  @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+
+  @@index([centerId])
+  @@index([tableId])
+  @@index([cameraId])
+  @@index([type])
+  @@index([severity])
+  @@index([timestamp])
+  @@map("alerts")
 }
