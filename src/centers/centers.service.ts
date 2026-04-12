@@ -118,6 +118,18 @@ export class CentersService {
   // These endpoints scope hardware creation to a specific center by
   // injecting centerId from the URL, so callers don't repeat it in body.
 
+  async getCameras(centerId: string, caller: RequestUser) {
+    this.assertCenterAccess(centerId, caller)
+    await this.assertCenterExists(centerId)
+    return this.prisma.camera.findMany({
+      where: { centerId, isActive: true },
+      include: {
+        table: { select: { id: true, name: true, tableNumber: true } },
+      },
+      orderBy: { name: 'asc' },
+    })
+  }
+
   async addCamera(centerId: string, dto: AddCameraDto, caller: RequestUser) {
     if (caller.role !== Role.SUPER_ADMIN) {
       throw new ForbiddenException('Only SUPER_ADMIN can add cameras to a center')

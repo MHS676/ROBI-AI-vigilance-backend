@@ -151,6 +151,15 @@ export class CentersController {
     return this.centersService.getHardwareInventory(centerId, user)
   }
 
+  @Get(':centerId/cameras')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({ summary: 'List all cameras for a center' })
+  @ApiParam({ name: 'centerId', description: 'Center CUID' })
+  @ApiResponse({ status: 200, description: 'Camera list' })
+  getCameras(@Param('centerId') centerId: string, @CurrentUser() user: RequestUser) {
+    return this.centersService.getCameras(centerId, user)
+  }
+
   @Post(':centerId/cameras')
   @Roles(Role.SUPER_ADMIN)
   @ApiOperation({
