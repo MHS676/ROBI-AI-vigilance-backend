@@ -3,7 +3,6 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
-  BadRequestException,
 } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateCenterDto } from './dto/create-center.dto'
@@ -45,7 +44,7 @@ export class CentersService {
   async findAll(requestingUser: RequestUser) {
     const where =
       requestingUser.role === Role.SUPER_ADMIN
-        ? {}
+        ? { isActive: true }           // only active centers for global list
         : { id: requestingUser.centerId }
 
     return this.prisma.center.findMany({
@@ -223,7 +222,7 @@ export class CentersService {
   private async assertCenterExists(centerId: string) {
     const center = await this.prisma.center.findUnique({ where: { id: centerId } })
     if (!center) throw new NotFoundException(`Center '${centerId}' not found`)
-    if (!center.isActive) throw new BadRequestException(`Center '${center.name}' is inactive`)
+    if (!center.isActive) throw new NotFoundException(`Center '${center.name}' is no longer active`)
     return center
   }
 }
