@@ -36,6 +36,8 @@ import { OnvifScannerService } from './onvif-scanner.service'
           transport: Transport.MQTT,
           options: {
             url:      config.get<string>('MQTT_URL') ?? 'mqtt://localhost:1883',
+            username: config.get<string>('RABBITMQ_USER'),
+            password: config.get<string>('RABBITMQ_PASS'),
             clientId: `falcon-provisioner-${Date.now()}`,
             clean:    true,
             connectTimeout: 4000,

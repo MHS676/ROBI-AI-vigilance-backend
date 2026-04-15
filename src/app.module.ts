@@ -16,6 +16,7 @@ import { EventsModule } from './events/events.module'
 import { MqttModule } from './mqtt/mqtt.module'
 import { IngestModule } from './ingest/ingest.module'
 import { ProvisioningModule } from './provisioning/provisioning.module'
+import { RuViewModule } from './ruview/ruview.module'
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { ProvisioningModule } from './provisioning/provisioning.module'
     MqttModule,
     IngestModule,
     ProvisioningModule,
+    RuViewModule,
   ],
   controllers: [AppController],
   providers: [AppService],

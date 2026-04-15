@@ -62,14 +62,17 @@ async function bootstrap() {
   })
 
   // ── MQTT Microservice ──────────────────────────────────────
-  // Connect the MQTT transport so @EventPattern decorators in MqttController
-  // can receive messages from the 525 ESP32 nodes.
-  // The broker URL defaults to localhost:1883 for local dev (e.g. Mosquitto).
-  // In production, set MQTT_URL=mqtt://your-broker:1883 in .env
+  // Connects to RabbitMQ MQTT plugin (rabbitmq_mqtt) on port 1883.
+  // RabbitMQ credentials are encoded in the MQTT_URL as mqtt://user:pass@host:port
+  // Enable MQTT plugin on RabbitMQ: rabbitmq-plugins enable rabbitmq_mqtt
+  const mqttUrl  = process.env.MQTT_URL ?? 'mqtt://localhost:1883'
+  const mqttUser = process.env.RABBITMQ_USER
+  const mqttPass = process.env.RABBITMQ_PASS
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.MQTT,
     options: {
-      url: process.env.MQTT_URL ?? 'mqtt://localhost:1883',
+      url: mqttUrl,
+      ...(mqttUser && mqttPass ? { username: mqttUser, password: mqttPass } : {}),
       clientId: `falcon-backend-${process.env.NODE_ENV ?? 'dev'}-${Date.now()}`,
       clean: true,
       connectTimeout: 4000,

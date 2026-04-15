@@ -32,6 +32,12 @@ export const MQTT_TOPICS = {
    *  Pattern: falcon/center/{centerId}/# */
   CENTER_ALL: 'falcon/center/+/#',
 
+  /** Raw CSI (Channel State Information) payload from RuView-compatible ESP32 nodes.
+   *  Unlike WIFI_SENSING (which is center-scoped), this topic is node-scoped.
+   *  The RuViewEngineService resolves centerId via EspNode.macAddress DB lookup.
+   *  Pattern: falcon/esp/wifi-sensing */
+  WIFI_SENSING_RAW: 'falcon/esp/wifi-sensing',
+
   // ── Zero-Config Provisioning ──────────────────────────────────────────────
 
   /** Birth / announcement message published by any new ESP32 or AI-Mic.
@@ -154,6 +160,12 @@ export const WS_EVENTS = {
 
   /** Person sudden sick / incapacitated — HIGH */
   SICK_DETECTED: 'alert:sick_detected',
+
+  /** WiFi CSI-based fall detection from RuView engine — CRITICAL.
+   *  Source: falcon/esp/wifi-sensing → RuViewEngineService CSI_VARIANCE_FALL algorithm.
+   *  Payload: { alertId, type, tableId, tableName, tableNumber, nodeId, confidence,
+   *            algorithm, detectedAt, centerId, centerName } */
+  WIFI_CSI_FALL_DETECTED: 'alert:wifi_csi_fall',
 
   /** Idle agent / empty counter detected — MEDIUM */
   IDLE_AGENT: 'alert:idle_agent',
