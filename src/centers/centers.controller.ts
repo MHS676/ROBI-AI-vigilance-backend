@@ -160,6 +160,24 @@ export class CentersController {
     return this.centersService.getCameras(centerId, user)
   }
 
+  @Get(':centerId/tables')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({ summary: 'List all tables for a center' })
+  @ApiParam({ name: 'centerId', description: 'Center CUID' })
+  @ApiResponse({ status: 200, description: 'Table list with linked camera, microphone and agent' })
+  getTables(@Param('centerId') centerId: string, @CurrentUser() user: RequestUser) {
+    return this.centersService.getTablesByCenter(centerId, user)
+  }
+
+  @Get(':centerId/microphones')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN)
+  @ApiOperation({ summary: 'List all microphones for a center' })
+  @ApiParam({ name: 'centerId', description: 'Center CUID' })
+  @ApiResponse({ status: 200, description: 'Microphone list with table assignment status' })
+  getMicrophones(@Param('centerId') centerId: string, @CurrentUser() user: RequestUser) {
+    return this.centersService.getMicrophonesByCenter(centerId, user)
+  }
+
   @Post(':centerId/cameras')
   @Roles(Role.SUPER_ADMIN)
   @ApiOperation({

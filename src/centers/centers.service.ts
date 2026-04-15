@@ -217,6 +217,34 @@ export class CentersService {
     }
   }
 
+  async getTablesByCenter(centerId: string, caller: RequestUser) {
+    this.assertCenterAccess(centerId, caller)
+    await this.assertCenterExists(centerId)
+
+    return this.prisma.table.findMany({
+      where: { centerId },
+      include: {
+        camera:     { select: { id: true, name: true, rtspUrl: true, status: true } },
+        microphone: { select: { id: true, name: true, channel: true, status: true } },
+        agent:      { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+      orderBy: [{ tableNumber: 'asc' }],
+    })
+  }
+
+  async getMicrophonesByCenter(centerId: string, caller: RequestUser) {
+    this.assertCenterAccess(centerId, caller)
+    await this.assertCenterExists(centerId)
+
+    return this.prisma.microphone.findMany({
+      where: { centerId },
+      include: {
+        table: { select: { id: true, name: true, tableNumber: true, isActive: true } },
+      },
+      orderBy: { name: 'asc' },
+    })
+  }
+
   // ── PRIVATE HELPERS ──────────────────────────────────────────────────
 
   private async assertCenterExists(centerId: string) {
