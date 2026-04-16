@@ -1,10 +1,11 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import * as net from 'net'
 import { PrismaService } from '../prisma/prisma.service'
 import { EventsGateway } from '../events/events.gateway'
 import { WS_EVENTS } from '../mqtt/mqtt.constants'
 import { DeviceStatus } from '@prisma/client'
+import { StreamingService } from '../streaming/streaming.service'
 
 // ─── TCP probe ────────────────────────────────────────────────────────────────
 function tcpProbe(
@@ -61,6 +62,7 @@ export class CameraPollerService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsGateway,
+    @Optional() private readonly streaming: StreamingService,
   ) {}
 
   /** Fire one poll immediately when the module boots so admins see status right away. */
@@ -161,6 +163,11 @@ export class CameraPollerService implements OnModuleInit {
     if (!center) return
 
     // ── 3. Emit update:device_status to center + super_admin room ───────────
+    // If camera just came back ONLINE, restart its HLS stream
+    if (newStatus === DeviceStatus.ONLINE && cam.rtspUrl) {
+      this.streaming?.onCameraOnline(cam.id, cam.rtspUrl)
+    }
+
     const statusEnvelope = this.events.buildEnvelope(
       cam.centerId,
       center.name,
@@ -183,6 +190,9 @@ export class CameraPollerService implements OnModuleInit {
 
     // ── 4. Emit alert:device_offline for Red Alert on dashboard ─────────────
     if (newStatus === DeviceStatus.OFFLINE) {
+      // Stop the HLS stream for this camera
+      this.streaming?.onCameraOffline(cam.id)
+
       const offlineEnvelope = this.events.buildEnvelope(
         cam.centerId,
         center.name,

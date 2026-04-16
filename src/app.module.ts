@@ -18,6 +18,7 @@ import { IngestModule } from './ingest/ingest.module'
 import { ProvisioningModule } from './provisioning/provisioning.module'
 import { RuViewModule } from './ruview/ruview.module'
 import { AlertsModule } from './alerts/alerts.module'
+import { StreamingModule } from './streaming/streaming.module'
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AlertsModule } from './alerts/alerts.module'
     ProvisioningModule,
     RuViewModule,
     AlertsModule,
+    StreamingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
