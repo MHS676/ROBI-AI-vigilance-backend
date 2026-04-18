@@ -136,7 +136,7 @@ export class CentersService {
     await this.assertCenterExists(centerId)
 
     return this.prisma.camera.create({
-      data: { ...dto, centerId },
+      data: { ...dto, centerId, isActive: true },
       include: { center: { select: { id: true, name: true, code: true } } },
     })
   }
