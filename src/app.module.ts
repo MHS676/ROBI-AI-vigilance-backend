@@ -19,6 +19,7 @@ import { ProvisioningModule } from './provisioning/provisioning.module'
 import { RuViewModule } from './ruview/ruview.module'
 import { AlertsModule } from './alerts/alerts.module'
 import { StreamingModule } from './streaming/streaming.module'
+import { LocalMediaModule } from './local-media/local-media.module'
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { StreamingModule } from './streaming/streaming.module'
     RuViewModule,
     AlertsModule,
     StreamingModule,
+    LocalMediaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

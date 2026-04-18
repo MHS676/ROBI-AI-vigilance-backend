@@ -64,6 +64,13 @@ enum AiFeature {
   CROWD   /// over-crowding / crowd density detection
 }
 
+/// Type of locally-stored media file recorded by the surveillance system.
+enum MediaType {
+  VIDEO         /// MP4 / HLS segment recorded from an RTSP camera stream
+  AUDIO         /// WAV / PCM recorded from a microphone channel
+  WIFI_SENSING  /// JSON-line log of raw CSI frames from an ESP32 node
+}
+
 // ============================================================
 // USER — Authentication & RBAC
 // ============================================================
@@ -117,6 +124,7 @@ model Center {
   tables       Table[]       @relation("CenterTables")
   inventory    DeviceInventory[] @relation("CenterInventory")
   alerts       Alert[]       /// All AI/sensor alerts generated within this center
+  localMedia   LocalMedia[]  @relation("CenterLocalMedia")  /// On-disk recordings
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -265,6 +273,7 @@ model Table {
   audioThresholdDb Int? /// Per-table audio alert threshold in dB
 
   alerts       Alert[] /// AI/sensor alerts at this table
+  localMedia   LocalMedia[] @relation("TableLocalMedia") /// On-disk recordings at this table
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -371,4 +380,69 @@ model Alert {
   @@index([severity])
   @@index([timestamp])
   @@map("alerts")
+}
+
+// ============================================================
+// LOCAL MEDIA — On-Disk Recording Index
+// Metadata registry for every file written to the local Linux
+// server's hard drive by the RecordingService.
+//
+// Physical layout on disk:
+//   /records/{centerId}/{tableId}/{YYYY-MM-DD}/{mediaType}/
+//       <cuid>_cam<N>.mp4   (VIDEO)
+//       <cuid>_mic<N>.wav   (AUDIO)
+//       <cuid>_csi.jsonl    (WIFI_SENSING)
+//
+// cameraNumber / micNumber are indexed for fast per-device searches.
+// ============================================================
+
+model LocalMedia {
+  id             String    @id @default(cuid())
+
+  /// MediaType enum: VIDEO | AUDIO | WIFI_SENSING
+  mediaType      MediaType
+
+  /// Absolute path on the Linux server, e.g.
+  /// /records/clx.../clx.../2026-04-18/VIDEO/clx..._cam1.mp4
+  absolutePath   String    @unique
+
+  /// File size in bytes — updated once the recording is finalised
+  fileSize       BigInt    @default(0)
+
+  /// Physical camera channel number on the DVR (1, 2, 3 …)
+  /// NULL for AUDIO and WIFI_SENSING records
+  cameraNumber   Int?
+
+  /// Physical microphone number in the center (1, 2, 3 …)
+  /// NULL for VIDEO and WIFI_SENSING records
+  micNumber      Int?
+
+  // ── Relations ──────────────────────────────────────────────
+  centerId       String
+  center         Center    @relation("CenterLocalMedia", fields: [centerId], references: [id], onDelete: Cascade)
+
+  tableId        String?
+  table          Table?    @relation("TableLocalMedia", fields: [tableId], references: [id], onDelete: SetNull)
+
+  /// ISO date string of the recording session, e.g. "2026-04-18"
+  /// Denormalised here so we can filter without a date-trunc on createdAt
+  recordingDate  String
+
+  /// Duration of the recording in seconds (set when file is closed)
+  durationSec    Float?
+
+  /// Optional human-readable notes / tags (e.g. alert correlation ID)
+  notes          String?
+
+  createdAt      DateTime  @default(now())
+
+  /// ── Indexes for fast per-device search ───────────────────
+  @@index([centerId])
+  @@index([tableId])
+  @@index([cameraNumber])   /// fast lookup by camera channel
+  @@index([micNumber])      /// fast lookup by microphone number
+  @@index([mediaType])
+  @@index([recordingDate])
+  @@index([centerId, recordingDate])
+  @@map("local_media")
 }
