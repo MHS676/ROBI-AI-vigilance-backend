@@ -124,6 +124,7 @@ model Center {
   tables       Table[]       @relation("CenterTables")
   inventory    DeviceInventory[] @relation("CenterInventory")
   alerts       Alert[]       /// All AI/sensor alerts generated within this center
+  auditLogs    AuditLog[]    @relation("CenterAuditLogs")  /// Anomaly/fall audit trail
   localMedia   LocalMedia[]  @relation("CenterLocalMedia")  /// On-disk recordings
 
   createdAt    DateTime @default(now())
@@ -273,6 +274,7 @@ model Table {
   audioThresholdDb Int? /// Per-table audio alert threshold in dB
 
   alerts       Alert[] /// AI/sensor alerts at this table
+  auditLogs    AuditLog[]  @relation("TableAuditLogs")  /// Anomaly/fall audit trail
   localMedia   LocalMedia[] @relation("TableLocalMedia") /// On-disk recordings at this table
 
   createdAt    DateTime @default(now())
@@ -445,4 +447,57 @@ model LocalMedia {
   @@index([recordingDate])
   @@index([centerId, recordingDate])
   @@map("local_media")
+}
+
+// ============================================================
+// AUDIT LOG — WiFi CSI Anomaly / Fall Detection Audit Trail
+//
+// Created by WifiAnomalyService whenever the EMA-based anomaly
+// detector fires, regardless of whether the event crosses the
+// CRITICAL alert threshold.  Stores raw diagnostic data so
+// operators can tune thresholds and review near-misses.
+// ============================================================
+
+model AuditLog {
+  id            String   @id @default(cuid())
+
+  /// Event type — e.g. "FALL_DETECTED", "SUDDEN_MOVEMENT", "ANOMALY"
+  eventType     String
+
+  /// Detection source — e.g. "WIFI_CSI_EMA"
+  source        String
+
+  /// MAC address or CUID of the ESP32 node that generated the CSI data
+  nodeId        String
+
+  /// EMA value at the time of detection (baseline moving average)
+  emaValue      Float
+
+  /// Mean amplitude of the current CSI frame that triggered the anomaly
+  currentAmplitude Float
+
+  /// Ratio of currentAmplitude / emaValue — how far above baseline
+  deviationRatio  Float
+
+  /// Algorithm-derived confidence score 0.0 – 1.0
+  confidence    Float
+
+  /// Raw CSI sample array + extra diagnostics packed as JSON
+  metadata      Json?
+
+  // ── Relations ──────────────────────────────────────────────
+  centerId      String
+  center        Center   @relation("CenterAuditLogs", fields: [centerId], references: [id], onDelete: Cascade)
+
+  tableId       String?
+  table         Table?   @relation("TableAuditLogs", fields: [tableId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime @default(now())
+
+  @@index([centerId])
+  @@index([tableId])
+  @@index([nodeId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

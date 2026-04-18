@@ -4,6 +4,7 @@ import { EventsModule } from '../events/events.module'
 import { CsiLogModule } from '../csi-log/csi-log.module'
 import { RuViewController } from './ruview.controller'
 import { RuViewEngineService } from './ruview.service'
+import { WifiAnomalyService } from './wifi-anomaly.service'
 
 /**
  * RuViewModule
@@ -32,7 +33,7 @@ import { RuViewEngineService } from './ruview.service'
 @Module({
   imports: [PrismaModule, EventsModule, CsiLogModule],
   controllers: [RuViewController],
-  providers: [RuViewEngineService],
-  exports: [RuViewEngineService],
+  providers: [RuViewEngineService, WifiAnomalyService],
+  exports: [RuViewEngineService, WifiAnomalyService],
 })
 export class RuViewModule {}

@@ -3,6 +3,7 @@ import { EventPattern, Payload, Ctx, MqttContext } from '@nestjs/microservices'
 import { MQTT_TOPICS } from '../mqtt/mqtt.constants'
 import { CsiPayload } from './interfaces/csi-payload.interface'
 import { RuViewEngineService } from './ruview.service'
+import { WifiAnomalyService } from './wifi-anomaly.service'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RuViewController
@@ -21,7 +22,10 @@ import { RuViewEngineService } from './ruview.service'
 export class RuViewController {
   private readonly logger = new Logger(RuViewController.name)
 
-  constructor(private readonly ruviewService: RuViewEngineService) {}
+  constructor(
+    private readonly ruviewService: RuViewEngineService,
+    private readonly anomalyService: WifiAnomalyService,
+  ) {}
 
   /**
    * Handles raw CSI payloads published by RuView-compatible ESP32 nodes.
@@ -48,5 +52,6 @@ export class RuViewController {
     )
 
     await this.ruviewService.process(data)
+    await this.anomalyService.process(data)
   }
 }
