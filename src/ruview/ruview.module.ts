@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { PrismaModule } from '../prisma/prisma.module'
 import { EventsModule } from '../events/events.module'
+import { CsiLogModule } from '../csi-log/csi-log.module'
 import { RuViewController } from './ruview.controller'
 import { RuViewEngineService } from './ruview.service'
 
@@ -29,7 +30,7 @@ import { RuViewEngineService } from './ruview.service'
  *     the RuView engine uses the updated Table/zone configuration immediately.
  */
 @Module({
-  imports: [PrismaModule, EventsModule],
+  imports: [PrismaModule, EventsModule, CsiLogModule],
   controllers: [RuViewController],
   providers: [RuViewEngineService],
   exports: [RuViewEngineService],

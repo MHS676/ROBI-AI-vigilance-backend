@@ -20,6 +20,7 @@ import { RuViewModule } from './ruview/ruview.module'
 import { AlertsModule } from './alerts/alerts.module'
 import { StreamingModule } from './streaming/streaming.module'
 import { LocalMediaModule } from './local-media/local-media.module'
+import { CsiLogModule } from './csi-log/csi-log.module'
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { LocalMediaModule } from './local-media/local-media.module'
     AlertsModule,
     StreamingModule,
     LocalMediaModule,
+    CsiLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

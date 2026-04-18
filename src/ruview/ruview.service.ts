@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { EventsGateway } from '../events/events.gateway'
 import { WS_EVENTS, AlertSeverity } from '../mqtt/mqtt.constants'
 import { CsiPayload, ResolvedTable, FallDetectionResult } from './interfaces/csi-payload.interface'
+import { CsiLogService } from '../csi-log/csi-log.service'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CSI FALL DETECTION ALGORITHM CONSTANTS
@@ -84,6 +85,7 @@ export class RuViewEngineService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsGateway,
+    private readonly csiLog: CsiLogService,
   ) {}
 
   // ── Public entry point ────────────────────────────────────────────────────
