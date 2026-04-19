@@ -26,6 +26,17 @@ class IngestAlertDto {
   @IsNumber() @IsOptional() confidence?: number
   /** Which sensor tech triggered this alert: CCTV | WIFI | AUDIO */
   @IsString() @IsOptional() tech?: string
+  /** Extra metadata (agent monitoring events only) */
+  metadata?: Record<string, unknown>
+}
+
+class AgentActivityDto {
+  @IsString() @IsNotEmpty() table_id: string
+  @IsString() @IsNotEmpty() user_id: string
+  @IsNumber() @IsOptional() active_minutes?: number
+  @IsNumber() @IsOptional() gossip_count?: number
+  /** Normalised sentiment score in [-1, +1]; SHI = (score+1)/2*100 */
+  @IsNumber() @IsOptional() avg_sentiment_score?: number
 }
 
 class ResourceSaverDto {
@@ -257,6 +268,7 @@ export class IngestController {
       CROWD_DETECTED:   WS_EVENTS.CROWD_DETECTED,
       SICK_DETECTED:    WS_EVENTS.SICK_DETECTED,
       IDLE_AGENT:       WS_EVENTS.IDLE_AGENT,
+      GOSSIP_DETECTED:  WS_EVENTS.GOSSIP_DETECTED,
       LONG_SERVICE:     WS_EVENTS.LONG_SERVICE,
       LONG_STAY:        WS_EVENTS.LONG_STAY,
       VANDALISM:        WS_EVENTS.VANDALISM_DETECTED,
@@ -298,5 +310,72 @@ export class IngestController {
       severity,
       confidence: dto.confidence ?? null,
     }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PATCH /ingest/agent-activity
+  // Called by the Python agent_monitor every 60 s to persist running metrics
+  // (active_minutes, gossip_count, avg_sentiment_score) into AgentActivity.
+  // ───────────────────────────────────────────────────────────────────────────
+  @Patch('agent-activity')
+  @ApiOperation({
+    summary: '📊 Upsert AgentActivity record from the monitoring engine',
+    description:
+      'Called by the Python `agent_monitor` every 60 s.  ' +
+      'Finds the most recent AgentActivity row for (userId, tableId) today ' +
+      'and updates it, or creates a new one if none exists.',
+  })
+  @ApiResponse({ status: 200, description: 'Activity record updated' })
+  @ApiResponse({ status: 401, description: 'Invalid service key' })
+  async upsertAgentActivity(
+    @Body() dto: AgentActivityDto,
+    @Headers('x-service-key') serviceKey: string,
+  ) {
+    const expected = this.config.get<string>('NESTJS_SERVICE_KEY') ?? ''
+    if (!expected || serviceKey !== expected) throw new UnauthorizedException('Invalid service key')
+
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    // Find the most recent record for today (createdAt >= midnight)
+    const existing = await this.prisma.agentActivity.findFirst({
+      where: {
+        userId:  dto.user_id,
+        tableId: dto.table_id,
+        createdAt: { gte: todayStart },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    const data = {
+      ...(dto.active_minutes      != null && { activeMinutes:      dto.active_minutes }),
+      ...(dto.gossip_count        != null && { gossipCount:        dto.gossip_count }),
+      ...(dto.avg_sentiment_score != null && { avgSentimentScore:  dto.avg_sentiment_score }),
+      lastSeen: new Date(),
+    }
+
+    let record
+    if (existing) {
+      record = await this.prisma.agentActivity.update({
+        where: { id: existing.id },
+        data,
+      })
+    } else {
+      record = await this.prisma.agentActivity.create({
+        data: {
+          userId:  dto.user_id,
+          tableId: dto.table_id,
+          ...data,
+        },
+      })
+    }
+
+    this.logger.debug(
+      `📊 AgentActivity upserted — user=${dto.user_id} table=${dto.table_id} ` +
+      `active=${record.activeMinutes.toFixed(1)}m gossip=${record.gossipCount} ` +
+      `shi=${((record.avgSentimentScore + 1) / 2 * 100).toFixed(1)}`,
+    )
+
+    return { message: 'Activity updated', record }
   }
 }

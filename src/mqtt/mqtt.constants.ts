@@ -170,6 +170,9 @@ export const WS_EVENTS = {
   /** Idle agent / empty counter detected — MEDIUM */
   IDLE_AGENT: 'alert:idle_agent',
 
+  /** Two or more agents detected at the same table without a customer — LOW */
+  GOSSIP_DETECTED: 'alert:gossip_detected',
+
   /** Long serving time threshold exceeded — MEDIUM */
   LONG_SERVICE: 'alert:long_service',
 
