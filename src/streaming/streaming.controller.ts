@@ -8,12 +8,15 @@ import {
   HttpCode,
   HttpStatus,
   Body,
+  InternalServerErrorException,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { Response } from 'express'
 import { StreamingService } from './streaming.service'
 import * as path from 'path'
 import * as fs from 'fs'
+import { spawn } from 'child_process'
+import { ConfigService } from '@nestjs/config'
 
 /**
  * StreamingController — serves HLS segments transcoded from RTSP by ffmpeg.
@@ -23,7 +26,10 @@ import * as fs from 'fs'
 @ApiTags('Streaming')
 @Controller('streaming')
 export class StreamingController {
-  constructor(private readonly streamingService: StreamingService) {}
+  constructor(
+    private readonly streamingService: StreamingService,
+    private readonly config: ConfigService,
+  ) {}
 
   // ── Status ──────────────────────────────────────────────────────────────
 
@@ -31,6 +37,64 @@ export class StreamingController {
   @ApiOperation({ summary: 'Check if HLS transcoding is running for a camera' })
   getStatus(@Param('cameraId') cameraId: string) {
     return this.streamingService.getStatus(cameraId)
+  }
+
+  // ── Snapshot ─────────────────────────────────────────────────────────────
+
+  @Get(':cameraId/snapshot.jpg')
+  @ApiOperation({ summary: 'Grab a JPEG snapshot from the latest HLS segment' })
+  async getSnapshot(@Param('cameraId') cameraId: string, @Res() res: Response) {
+    const hlsDir = this.streamingService.getHlsDir(cameraId)
+    const manifest = path.join(hlsDir, 'index.m3u8')
+
+    if (!fs.existsSync(manifest)) {
+      throw new NotFoundException('Stream not ready yet')
+    }
+
+    // Find the latest .ts segment in the HLS dir
+    const segments = fs.readdirSync(hlsDir)
+      .filter(f => f.endsWith('.ts'))
+      .sort()
+    if (segments.length === 0) {
+      throw new NotFoundException('No segments available yet')
+    }
+    const latestSeg = path.join(hlsDir, segments[segments.length - 1])
+
+    const ffmpegBin = this.config.get<string>('FFMPEG_PATH') ?? 'ffmpeg'
+
+    // Extract one JPEG frame from the latest segment
+    const jpeg = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = []
+      const proc = spawn(ffmpegBin, [
+        '-i', latestSeg,
+        '-vframes', '1',
+        '-f', 'image2',
+        '-vcodec', 'mjpeg',
+        'pipe:1',
+      ], { stdio: ['ignore', 'pipe', 'ignore'] })
+
+      proc.stdout.on('data', (d: Buffer) => chunks.push(d))
+      proc.on('close', (code) => {
+        if (code === 0 && chunks.length > 0) {
+          resolve(Buffer.concat(chunks))
+        } else {
+          reject(new Error(`ffmpeg exited ${code}`))
+        }
+      })
+      proc.on('error', reject)
+
+      // Timeout after 5s
+      setTimeout(() => { proc.kill(); reject(new Error('timeout')); }, 5000)
+    }).catch(() => null)
+
+    if (!jpeg) {
+      throw new InternalServerErrorException('Could not extract frame')
+    }
+
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.setHeader('Cache-Control', 'no-cache, no-store')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.end(jpeg)
   }
 
   // ── Start / Stop ─────────────────────────────────────────────────────────

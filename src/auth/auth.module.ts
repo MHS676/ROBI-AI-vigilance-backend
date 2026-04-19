@@ -8,6 +8,8 @@ import { JwtStrategy } from './strategies/jwt.strategy'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { RolesGuard } from './guards/roles.guard'
 
+import { ApiKeyGuard } from './guards/api-key.guard'
+
 @Module({
   imports: [
     // Register Passport with 'jwt' as the default strategy so that
@@ -43,6 +45,7 @@ import { RolesGuard } from './guards/roles.guard'
     // them without re-declaring. Use APP_GUARD in AppModule for global registration.
     JwtAuthGuard,
     RolesGuard,
+    ApiKeyGuard,
   ],
   exports: [
     // JwtModule exported so other modules can call JwtService.sign() if needed
@@ -52,6 +55,7 @@ import { RolesGuard } from './guards/roles.guard'
     // Export guards so they can be injected in other modules or used as APP_GUARD
     JwtAuthGuard,
     RolesGuard,
+    ApiKeyGuard,
   ],
 })
 export class AuthModule {}

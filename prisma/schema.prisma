@@ -92,6 +92,13 @@ model User {
   /// One Agent is assigned to exactly one Table (1:1 enforced via @unique on Table.agentId)
   assignedTable Table?  @relation("AgentTable")
 
+  /// Local path to the reference face photo used for gate attendance recognition.
+  /// e.g. "/data/agent-faces/clxyz123.jpg"
+  facePhotoPath String?
+
+  attendances     Attendance[]    @relation("UserAttendances")
+  agentActivities AgentActivity[] @relation("UserAgentActivities")
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -126,6 +133,7 @@ model Center {
   alerts       Alert[]       /// All AI/sensor alerts generated within this center
   auditLogs    AuditLog[]    @relation("CenterAuditLogs")  /// Anomaly/fall audit trail
   localMedia   LocalMedia[]  @relation("CenterLocalMedia")  /// On-disk recordings
+  attendances  Attendance[]  @relation("CenterAttendances") /// Gate attendance records for this center
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -273,9 +281,10 @@ model Table {
   /// Overrides the system default when set. Typical range: 50–120 dB.
   audioThresholdDb Int? /// Per-table audio alert threshold in dB
 
-  alerts       Alert[] /// AI/sensor alerts at this table
-  auditLogs    AuditLog[]  @relation("TableAuditLogs")  /// Anomaly/fall audit trail
-  localMedia   LocalMedia[] @relation("TableLocalMedia") /// On-disk recordings at this table
+  alerts          Alert[]         /// AI/sensor alerts at this table
+  auditLogs       AuditLog[]      @relation("TableAuditLogs")   /// Anomaly/fall audit trail
+  localMedia      LocalMedia[]    @relation("TableLocalMedia")   /// On-disk recordings at this table
+  agentActivities AgentActivity[] @relation("TableAgentActivities") /// Daily activity summary per agent at this table
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -500,4 +509,85 @@ model AuditLog {
   @@index([eventType])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ============================================================
+// ATTENDANCE — Gate Camera Face-Recognition Punch-In/Out
+// Created by the gate_attendance AI service when a known agent
+// is recognised at Camera_Entry or Camera_Exit.
+// ============================================================
+
+model Attendance {
+  id          String    @id @default(cuid())
+
+  // ── Punch-in ───────────────────────────────────────────────
+  entryTime   DateTime  @default(now())
+
+  /// Path to JPEG snapshot captured at the entry gate.
+  /// e.g. "/data/gate-captures/entry/2026-04-19_07-53-12_clxyz.jpg"
+  entryImage  String?
+
+  // ── Punch-out ─────────────────────────────────────────────
+  /// NULL until the agent is recognised at Camera_Exit.
+  exitTime    DateTime?
+
+  /// Path to JPEG snapshot captured at the exit gate.
+  exitImage   String?
+
+  // ── Relations ──────────────────────────────────────────────
+  userId      String
+  user        User      @relation("UserAttendances", fields: [userId], references: [id], onDelete: Cascade)
+
+  centerId    String
+  center      Center    @relation("CenterAttendances", fields: [centerId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([centerId])
+  @@index([entryTime])
+  @@index([userId, entryTime])  /// fast "today's session for agent X" queries
+  @@map("attendance")
+}
+
+// ============================================================
+// AGENT ACTIVITY — Per-Session Desk Performance Metrics
+// Updated continuously by the AI inference pipeline.
+// Aggregated from: camera vision + microphone sentiment analysis.
+// ============================================================
+
+model AgentActivity {
+  id                String   @id @default(cuid())
+
+  /// Total minutes the agent was detected as actively present at their table.
+  activeMinutes     Float    @default(0)
+
+  /// Number of off-topic / gossip conversation segments detected by the audio pipeline.
+  gossipCount       Int      @default(0)
+
+  /// Rolling average sentiment score for all customer interactions this session.
+  /// Range: -1.0 (very negative) → +1.0 (very positive). Default 0.0 (neutral).
+  avgSentimentScore Float    @default(0.0)
+
+  /// Timestamp of the most recent activity update from the inference pipeline.
+  lastSeen          DateTime @default(now())
+
+  // ── Relations ──────────────────────────────────────────────
+  userId            String
+  user              User     @relation("UserAgentActivities", fields: [userId], references: [id], onDelete: Cascade)
+
+  tableId           String
+  table             Table    @relation("TableAgentActivities", fields: [tableId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  /// One activity record per agent per calendar day per table
+  @@unique([userId, tableId, createdAt])
+  @@index([userId])
+  @@index([tableId])
+  @@index([lastSeen])
+  @@index([userId, lastSeen])
+  @@map("agent_activity")
 }

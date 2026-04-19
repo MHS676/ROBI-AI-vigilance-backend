@@ -10,10 +10,14 @@ import { UpdateCenterDto } from './dto/update-center.dto'
 import { AddCameraDto, AddEspNodeDto, AddMicrophoneDto } from './dto/add-hardware.dto'
 import { Role } from '@prisma/client'
 import { RequestUser } from '../auth/interfaces/jwt-payload.interface'
+import { StreamingService } from '../streaming/streaming.service'
 
 @Injectable()
 export class CentersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly streaming: StreamingService,
+  ) {}
 
   // ── helpers ─────────────────────────────────────────────────────────
 
@@ -135,10 +139,17 @@ export class CentersService {
     }
     await this.assertCenterExists(centerId)
 
-    return this.prisma.camera.create({
+    const camera = await this.prisma.camera.create({
       data: { ...dto, centerId, isActive: true },
       include: { center: { select: { id: true, name: true, code: true } } },
     })
+
+    // Start HLS transcoding immediately for the new camera
+    if (camera.rtspUrl && dto.status !== 'OFFLINE') {
+      this.streaming.startCamera(camera.id, camera.rtspUrl)
+    }
+
+    return camera
   }
 
   async addEspNode(centerId: string, dto: AddEspNodeDto, caller: RequestUser) {

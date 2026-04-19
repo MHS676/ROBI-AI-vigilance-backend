@@ -21,9 +21,11 @@ import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { RolesGuard } from './guards/roles.guard'
+import { ApiKeyGuard } from './guards/api-key.guard'
 import { Roles } from './decorators/roles.decorator'
 import { CurrentUser } from './decorators/current-user.decorator'
 import { RequestUser } from './interfaces/jwt-payload.interface'
+import { PunchDto } from './dto/punch.dto'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -130,5 +132,48 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Missing, expired, or invalid token' })
   me(@CurrentUser() user: RequestUser) {
     return user
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /auth/punch-in
+  // Called exclusively by the gate_attendance AI service.
+  // Requires x-gate-api-key header (GATE_API_KEY env var).
+  // ───────────────────────────────────────────────────────────────
+  @Post('punch-in')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({
+    summary: 'Gate punch-in — agent recognised at Camera_Entry',
+    description:
+      'Called by the gate_attendance AI service with `x-gate-api-key` header.\n\n' +
+      'Creates (or returns existing) Attendance record for the agent today.',
+  })
+  @ApiBody({ type: PunchDto })
+  @ApiResponse({ status: 200, description: 'Punched in or already active session returned' })
+  @ApiResponse({ status: 401, description: 'Missing / invalid API key' })
+  @ApiResponse({ status: 404, description: 'Agent not found' })
+  punchIn(@Body() dto: PunchDto) {
+    return this.authService.punchIn(dto)
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /auth/punch-out
+  // ───────────────────────────────────────────────────────────────
+  @Post('punch-out')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ApiKeyGuard)
+  @ApiOperation({
+    summary: 'Gate punch-out — agent recognised at Camera_Exit',
+    description:
+      'Called by the gate_attendance AI service with `x-gate-api-key` header.\n\n' +
+      'Closes the most recent open Attendance record (sets exitTime).',
+  })
+  @ApiBody({ type: PunchDto })
+  @ApiResponse({ status: 200, description: 'Session closed successfully' })
+  @ApiResponse({ status: 400, description: 'No open session found for this agent' })
+  @ApiResponse({ status: 401, description: 'Missing / invalid API key' })
+  @ApiResponse({ status: 404, description: 'Agent not found' })
+  punchOut(@Body() dto: PunchDto) {
+    return this.authService.punchOut(dto)
   }
 }

@@ -3,6 +3,8 @@ import {
   UnauthorizedException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { Role } from '@prisma/client'
@@ -10,6 +12,7 @@ import * as bcrypt from 'bcryptjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
+import { PunchDto } from './dto/punch.dto'
 import { JwtPayload, RequestUser } from './interfaces/jwt-payload.interface'
 
 /** Fields returned to the client — never includes the hashed password */
@@ -115,6 +118,90 @@ export class AuthService {
 
     const { password: _pw, ...rest } = user
     return rest as RequestUser
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PUNCH IN  — called by the gate_attendance AI service
+  // Creates a new Attendance record when an agent enters the building.
+  // Idempotent: if an open record (no exitTime) already exists today,
+  // returns that record rather than creating a duplicate.
+  // ─────────────────────────────────────────────────────────────
+  async punchIn(dto: PunchDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } })
+    if (!user || !user.isActive) {
+      throw new NotFoundException(`Agent '${dto.userId}' not found or inactive`)
+    }
+
+    // Check for an open session today (no exitTime yet)
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const existing = await this.prisma.attendance.findFirst({
+      where: {
+        userId:    dto.userId,
+        centerId:  dto.centerId,
+        entryTime: { gte: todayStart },
+        exitTime:  null,
+      },
+      orderBy: { entryTime: 'desc' },
+    })
+
+    if (existing) {
+      return { status: 'already_in', attendance: existing }
+    }
+
+    const attendance = await this.prisma.attendance.create({
+      data: {
+        userId:     dto.userId,
+        centerId:   dto.centerId,
+        entryTime:  new Date(),
+        entryImage: dto.faceImage ?? null,
+      },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    })
+
+    return { status: 'punched_in', attendance }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PUNCH OUT — called by the gate_attendance AI service
+  // Closes the most recent open Attendance record for the agent.
+  // ─────────────────────────────────────────────────────────────
+  async punchOut(dto: PunchDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } })
+    if (!user || !user.isActive) {
+      throw new NotFoundException(`Agent '${dto.userId}' not found or inactive`)
+    }
+
+    const open = await this.prisma.attendance.findFirst({
+      where: {
+        userId:   dto.userId,
+        centerId: dto.centerId,
+        exitTime: null,
+      },
+      orderBy: { entryTime: 'desc' },
+    })
+
+    if (!open) {
+      throw new BadRequestException(
+        `No open attendance session found for agent '${dto.userId}'. Did you punch in?`,
+      )
+    }
+
+    const attendance = await this.prisma.attendance.update({
+      where: { id: open.id },
+      data: {
+        exitTime:  new Date(),
+        exitImage: dto.faceImage ?? null,
+      },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    })
+
+    return { status: 'punched_out', attendance }
   }
 
   // ─────────────────────────────────────────────────────────────
