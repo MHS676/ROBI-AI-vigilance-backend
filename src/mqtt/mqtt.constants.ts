@@ -193,6 +193,16 @@ export const WS_EVENTS = {
 
   /** Repeated customer visit within time frame — INFO */
   REPEATED_VISIT: 'alert:repeated_visit',
+
+  // ── Agent Intelligence ────────────────────────────────────────────────────
+  /** Agent Intelligence profile updated — aggregated attendance + metrics. Emitted to SUPER_ADMIN. */
+  AGENT_PROFILE_UPDATED: 'agent:profile_updated',
+
+  /** Agent activity (desk presence, gossip, SHI) updated from inference pipeline. */
+  AGENT_ACTIVITY_UPDATED: 'agent:activity_updated',
+
+  /** Agent attendance record updated (punch-in / punch-out). */
+  AGENT_ATTENDANCE_UPDATED: 'agent:attendance_updated',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
