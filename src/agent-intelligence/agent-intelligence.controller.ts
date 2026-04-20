@@ -65,7 +65,7 @@ export class AgentIntelligenceController {
   @ApiOperation({
     summary: '📊 Upsert agent desk-presence activity metrics',
     description:
-      'Merges the provided activity metrics into today's AgentActivity record. ' +
+      `Merges the provided activity metrics into today's AgentActivity record. ` +
       'Creates a new record if none exists for today. ' +
       'Broadcasts AGENT_ACTIVITY_UPDATED to SUPER_ADMIN + center room. ' +
       'Protected by x-gate-api-key header (AI service).',
@@ -130,7 +130,7 @@ export class AgentIntelligenceController {
     description:
       'Returns a single JSON object aggregating all attendance, desk-presence, ' +
       'gossip, and expression scores for an agent. ' +
-      'Includes a time-in-chair breakdown for today's shift. ' +
+      `Includes a time-in-chair breakdown for today's shift. ` +
       'Also broadcasts AGENT_PROFILE_UPDATED to the SUPER_ADMIN WebSocket room.',
   })
   @ApiParam({ name: 'id', description: 'CUID of the agent (User.id)' })
